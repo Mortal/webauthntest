@@ -1,5 +1,8 @@
 {
   "dependencies": {
+    "asn1js": "^2.1.1",
+    "cbor": "^8.1.0",
+    "cose-to-jwk": "github:Mortal/cose-to-jwk",
     "express": "^4.17.1",
     "helmet": "^4.6.0",
     "ts-node": "^10.4.0"

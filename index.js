@@ -61,6 +61,7 @@ async function webauthntest_register() {
 			challenge,
 		},
 	});
+	console.log(cred);
 	const result = await (await window.fetch(
 		'/register-response',
 		{
@@ -71,8 +72,8 @@ async function webauthntest_register() {
 					...serverChallenge,
 					type: cred.type,
 					id: await b64encode(cred.rawId),
-					clientDataJSON: cred.response.clientDataJSON,
-					attestation: await b64encode(cred.response.attestationObject),
+					clientDataJSON: await b64encode(cred.response.clientDataJSON),
+					attestationObject: await b64encode(cred.response.attestationObject),
 				}
 			),
 		}
@@ -109,6 +110,7 @@ async function webauthntest_auth() {
 			challenge: await b64decode(serverChallenge.challenge),
 		},
 	});
+	console.log({cred});
 	const result = await (await window.fetch(
 		'/auth-response',
 		{
@@ -118,7 +120,7 @@ async function webauthntest_auth() {
 				{
 					type: cred.type,
 					id: await b64encode(cred.rawId),
-					clientDataJSON: cred.response.clientDataJSON,
+					clientDataJSON: await b64encode(cred.response.clientDataJSON),
 					authenticatorData: await b64encode(cred.response.authenticatorData),
 					signature: await b64encode(cred.response.signature),
 					userHandle: await b64encode(cred.response.userHandle),
