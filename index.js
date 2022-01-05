@@ -1,7 +1,9 @@
 console.log("Hello");
 
+const b64urlencode = (s) => s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64urldecode = (s) => s.replace(/-/g, "+").replace(/_/g, "/") + "====".substring(0, (4 - s.length % 4) % 4);
+
 async function b64decode(a) {
-	// console.log({a});
 	return await (await fetch("data:application/octet-stream;base64," + a)).arrayBuffer();
 }
 
@@ -36,7 +38,6 @@ async function test() {
 // test();
 
 async function webauthntest_register() {
-	console.log("Hello!");
 	const serverChallenge = await (await window.fetch(
 		'/register-challenge',
 		{
@@ -47,9 +48,9 @@ async function webauthntest_register() {
 	)).json();
 	console.log({serverChallenge});
 	const {user: {id: idB64}, challenge: challengeB64} = serverChallenge;
-	const userId = new Uint32Array(await b64decode(idB64));
-	document.getElementById("userid").value = userId[0];
-	const challenge = await b64decode(challengeB64);
+	const userId = await b64decode(b64urldecode(idB64));
+	document.getElementById("userid").value = b64urlencode(await b64encode(userId));
+	const challenge = await b64decode(b64urldecode(challengeB64));
 	console.log(challenge);
 	const cred = await navigator.credentials.create({
 		publicKey: {
@@ -69,11 +70,12 @@ async function webauthntest_register() {
 			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify(
 				{
-					...serverChallenge,
+					challenge: b64urlencode(await b64encode(challenge)),
+					userId: b64urlencode(await b64encode(userId)),
 					type: cred.type,
-					id: await b64encode(cred.rawId),
-					clientDataJSON: await b64encode(cred.response.clientDataJSON),
-					attestationObject: await b64encode(cred.response.attestationObject),
+					credentialId: cred.id,
+					clientDataJSON: b64urlencode(await b64encode(cred.response.clientDataJSON)),
+					attestationObject: b64urlencode(await b64encode(cred.response.attestationObject)),
 				}
 			),
 		}
@@ -88,7 +90,7 @@ async function webauthntest_auth() {
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({userId: +document.getElementById("userid").value}),
+			body: JSON.stringify({userId: document.getElementById("userid").value}),
 		}
 	)).json();
 	console.log({serverChallenge});
