@@ -7,6 +7,9 @@ import helmet from 'helmet';
 import cbor from 'cbor';
 import coseToJwk from 'cose-to-jwk';
 
+import { b64urlencode, b64urldecode } from './shared';
+import * as types from './types';
+
 const subtle = (crypto.webcrypto as any).subtle;
 
 interface User {
@@ -23,9 +26,6 @@ const cborParse = (b: Buffer): Promise<any> => {
 		});
 	});
 };
-
-const b64urlencode = (s: string) => s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const b64urldecode = (s: string) => s.replace(/-/g, "+").replace(/_/g, "/") + "====".substring(0, (4 - s.length % 4) % 4);
 
 const bufferEqual = (a: Buffer, b: Buffer) => {
 	if (a.length !== b.length) return false;
@@ -64,7 +64,7 @@ const main = () => {
 		users.push(user);
 		usersById[user.userId] = user;
 		saveUsers();
-		const response = {
+		const response: types.RegisterChallengeResponse = {
 			rp: {
 				name: "Webauthntest"
 			},
@@ -86,8 +86,9 @@ const main = () => {
 	});
 	httpApp.post("/register-response", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
-		console.log(req.body);
-		const userId = Buffer.from(b64urldecode(req.body.userId), "base64");
+		const body: types.RegisterResponseRequest = req.body;
+		console.log(body);
+		const userId = Buffer.from(b64urldecode(body.userId), "base64");
 		const userIdB64 = b64urlencode(userId.toString("base64"));
 		const user = usersById[userIdB64];
 		if (user == null) {
@@ -99,7 +100,7 @@ const main = () => {
 			return;
 		}
 
-		const {authData, fmt, attStmt} = await cborParse(Buffer.from(req.body.attestationObject, "base64"));
+		const {authData, fmt, attStmt} = await cborParse(Buffer.from(body.attestationObject, "base64"));
 
 		const rpIdHash = authData.slice(0, 32);
 		const hostname = "localhost";
@@ -117,7 +118,7 @@ const main = () => {
 		}
 		const signCount = new Uint32Array(authData.slice(33, 37))[0];
 
-		const cData = Buffer.from(req.body.clientDataJSON, "base64");
+		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
 		if (C.origin !== origin || C.type !== "webauthn.create" || C.challenge !== user.challenge || C.hashAlgorithm !== "SHA-256") {
 			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.create", challenge: user.challenge, hashAlgorithm: "SHA-256"}, got: C});
@@ -171,7 +172,7 @@ const main = () => {
 		// TODO: Store credentialPublicKey and use it later
 		// TODO: Require an auth-challenge before actually storing the key
 
-		user.id = req.body.credentialId;
+		user.id = body.credentialId;
 		saveUsers();
 		res.json({userId: userIdB64});
 	});
@@ -183,16 +184,17 @@ const main = () => {
 			res.json({"error": "Unknown or missing userId"});
 			return;
 		}
-		if (users[userId].id == null) {
+		const id = users[userId].id;
+		if (id == null) {
 			res.json({"error": "userId not registered"});
 			return;
 		}
 		const challenge = crypto.randomBytes(32);
-		const response = {
+		const response: types.AuthChallengeResponse = {
 			challenge: challenge.toString("base64"),
 			allowCredentials: [
 				{
-					id: users[userId].id,
+					id: id,
 					transports: ["usb", "nfc", "ble"],
 					type: "public-key",
 				}
@@ -205,9 +207,10 @@ const main = () => {
 	});
 	httpApp.post("/auth-response", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
-		console.log(req.body);
+		const body: types.AuthResponseRequest = req.body;
+		console.log(body);
 
-		const authData = new Uint8Array(Buffer.from(req.body.authenticatorData, "base64"));
+		const authData = new Uint8Array(Buffer.from(body.authenticatorData, "base64"));
 		const rpIdHash = authData.slice(0, 32);
 		// TODO XXX: Verify that rpIdHash is the sha256 hash of the hostname "localhost"
 		const flagsByte = authData[32];
@@ -215,7 +218,7 @@ const main = () => {
 		// TODO XXX: Verify that User is Present (flags.UP !== 0)
 		const signCount = new Uint32Array(authData.slice(33, 37))[0];
 
-		const cData = Buffer.from(req.body.clientDataJSON, "base64");
+		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
 		// TODO XXX: Verify that the value of C.type is the string webauthn.get.
 		// TODO XXX: Verify that the value of C.challenge equals the base64url encoding of options.challenge.

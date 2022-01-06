@@ -1,18 +1,18 @@
-console.log("Hello");
+import { b64urlencode, b64urldecode } from 'shared';
+import type * as types from 'types';
 
-const b64urlencode = (s) => s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const b64urldecode = (s) => s.replace(/-/g, "+").replace(/_/g, "/") + "====".substring(0, (4 - s.length % 4) % 4);
-
-async function b64decode(a) {
+async function b64decode(a: string): Promise<ArrayBuffer> {
 	return await (await fetch("data:application/octet-stream;base64," + a)).arrayBuffer();
 }
 
-function b64encode(b) {
+function b64encode(b: Uint32Array | ArrayBuffer): Promise<string> {
 	return new Promise((r) => {
 		const blob = new Blob([b], {type:'application/octet-stream'});
 		const reader = new FileReader();
 		reader.onload = function(evt){
+			if (evt.target == null) return;
 			const dataurl = evt.target.result;
+			if (typeof dataurl !== "string") return;
 			// console.log(dataurl.substring(0, 100));
 			const i = dataurl.indexOf(',');
 			const typ = dataurl.substring(0, i);
@@ -33,12 +33,12 @@ async function test() {
 	b[3] = 4;
 	console.log(await b64encode(b));
 	console.log(new Uint32Array(await b64decode(await b64encode(b)))[2]);
-	console.log(await b64encode(await b64decode(await b64encode(b)))[2]);
+	//console.log(await b64encode(await b64decode(await b64encode(b)))[2]);
 }
 // test();
 
 async function webauthntest_register() {
-	const serverChallenge = await (await window.fetch(
+	const serverChallenge: types.RegisterChallengeResponse = await (await window.fetch(
 		'/register-challenge',
 		{
 			method: "POST",
@@ -49,7 +49,9 @@ async function webauthntest_register() {
 	console.log({serverChallenge});
 	const {user: {id: idB64}, challenge: challengeB64} = serverChallenge;
 	const userId = await b64decode(b64urldecode(idB64));
-	document.getElementById("userid").value = b64urlencode(await b64encode(userId));
+	const userIdElement = document.getElementById("userid") as HTMLInputElement | null;
+	if (userIdElement == null) return;
+	userIdElement.value = b64urlencode(await b64encode(userId));
 	const challenge = await b64decode(b64urldecode(challengeB64));
 	console.log(challenge);
 	const cred = await navigator.credentials.create({
@@ -61,23 +63,24 @@ async function webauthntest_register() {
 			},
 			challenge,
 		},
-	});
+	}) as PublicKeyCredential | null;
+	if (cred == null) return;
 	console.log(cred);
+	const credResponse = cred.response as AuthenticatorAttestationResponse;
+	const registerResponseRequest: types.RegisterResponseRequest = {
+		challenge: b64urlencode(await b64encode(challenge)),
+		userId: b64urlencode(await b64encode(userId)),
+		type: cred.type,
+		credentialId: cred.id,
+		clientDataJSON: b64urlencode(await b64encode(credResponse.clientDataJSON)),
+		attestationObject: b64urlencode(await b64encode(credResponse.attestationObject)),
+	}
 	const result = await (await window.fetch(
 		'/register-response',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify(
-				{
-					challenge: b64urlencode(await b64encode(challenge)),
-					userId: b64urlencode(await b64encode(userId)),
-					type: cred.type,
-					credentialId: cred.id,
-					clientDataJSON: b64urlencode(await b64encode(cred.response.clientDataJSON)),
-					attestationObject: b64urlencode(await b64encode(cred.response.attestationObject)),
-				}
-			),
+			body: JSON.stringify(registerResponseRequest),
 		}
 	)).json();
 	console.log({result});
@@ -85,12 +88,14 @@ async function webauthntest_register() {
 
 async function webauthntest_auth() {
 	console.log("Hello!");
-	const serverChallenge = await (await window.fetch(
+	const userIdElement = document.getElementById("userid") as HTMLInputElement | null;
+	if (userIdElement == null) return;
+	const serverChallenge: types.AuthChallengeResponse = await (await window.fetch(
 		'/auth-challenge',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({userId: document.getElementById("userid").value}),
+			body: JSON.stringify({userId: userIdElement.value}),
 		}
 	)).json();
 	console.log({serverChallenge});
@@ -105,35 +110,41 @@ async function webauthntest_auth() {
 			type,
 		});
 	}
-	const cred = await navigator.credentials.get({
+	const cred = (await navigator.credentials.get({
 		publicKey: {
 			allowCredentials,
 			timeout: 60000,
 			challenge: await b64decode(serverChallenge.challenge),
 		},
-	});
+	})) as PublicKeyCredential | null;
+	if (cred == null) return;
 	console.log({cred});
+	const credResponse = cred.response as AuthenticatorAssertionResponse;
+	if (credResponse == null) return;
+	const userHandle = credResponse.userHandle;
+	const authResponseRequest: types.AuthResponseRequest = {
+		type: cred.type,
+		id: await b64encode(cred.rawId),
+		clientDataJSON: await b64encode(credResponse.clientDataJSON),
+		authenticatorData: await b64encode(credResponse.authenticatorData),
+		signature: await b64encode(credResponse.signature),
+		userHandle: userHandle == null ? null : await b64encode(userHandle),
+	};
 	const result = await (await window.fetch(
 		'/auth-response',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify(
-				{
-					type: cred.type,
-					id: await b64encode(cred.rawId),
-					clientDataJSON: await b64encode(cred.response.clientDataJSON),
-					authenticatorData: await b64encode(cred.response.authenticatorData),
-					signature: await b64encode(cred.response.signature),
-					userHandle: await b64encode(cred.response.userHandle),
-				}
+				authResponseRequest
 			),
 		}
 	)).json();
 	console.log({result});
 }
 
-window.addEventListener("load", () => {
-	document.getElementById("register").addEventListener("click", webauthntest_register, false);
-	document.getElementById("auth").addEventListener("click", webauthntest_auth, false);
-}, false);
+console.log("Hello");
+const registerElement = document.getElementById("register");
+const authElement = document.getElementById("auth");
+if (registerElement) registerElement.addEventListener("click", webauthntest_register, false);
+if (authElement) authElement.addEventListener("click", webauthntest_auth, false);

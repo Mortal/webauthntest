@@ -1,0 +1,4 @@
+*.js
+/users.json
+*.pem
+/node_modules
