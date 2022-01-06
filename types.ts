@@ -34,6 +34,9 @@ export interface AuthChallengeResponse {
 }
 
 export interface AuthResponseRequest {
+	challenge: string;
+	userId: string;
+
 	type: string;
 	id: string;
 	clientDataJSON: string;

@@ -123,6 +123,8 @@ async function webauthntest_auth() {
 	if (credResponse == null) return;
 	const userHandle = credResponse.userHandle;
 	const authResponseRequest: types.AuthResponseRequest = {
+		userId: userIdElement.value,
+		challenge: serverChallenge.challenge,
 		type: cred.type,
 		id: await b64encode(cred.rawId),
 		clientDataJSON: await b64encode(credResponse.clientDataJSON),
@@ -135,9 +137,7 @@ async function webauthntest_auth() {
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify(
-				authResponseRequest
-			),
+			body: JSON.stringify(authResponseRequest),
 		}
 	)).json();
 	console.log({result});

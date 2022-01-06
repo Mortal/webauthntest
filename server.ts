@@ -13,9 +13,14 @@ import * as types from './types';
 const subtle = (crypto.webcrypto as any).subtle;
 
 interface User {
-	challenge?: string;
-	id?: string | null;
-	userId: string;
+	credentialId: string;
+	credentialPublicKey: {
+		kty: 'EC';
+		alg: 'ECDSA_w_SHA256';
+		crv: 'P-256';
+		x: string;
+		y: string;
+	};
 }
 
 const cborParse = (b: Buffer): Promise<any> => {
@@ -40,13 +45,16 @@ const main = () => {
 
 	const key = fs.readFileSync('key.pem', 'utf8');
 	const cert = fs.readFileSync('cert.pem', 'utf8');
-	const users: User[] = fs.statSync("users.json", {throwIfNoEntry: false}) != null ? JSON.parse(fs.readFileSync("users.json", "utf8")) : [];
-	const usersById: {[userId: string]: User} = {};
-	for (const user of users)
-		usersById[user.userId] = user;
+
+	const hostname = "localhost";
+	const origin = `https://${hostname}:4433`;
+	const hostnameHash = crypto.createHash('sha256').update(hostname, 'utf8').digest();
+
+	const users: {[userId: string]: User} = fs.statSync("users.json", {throwIfNoEntry: false}) != null ? JSON.parse(fs.readFileSync("users.json", "utf8")) : {};
 
 	const saveUsers = () => {
-		fs.writeFileSync("users.json", JSON.stringify(users.map(({id, userId}) => ({id, userId}))), "utf8");
+		console.log({users});
+		fs.writeFileSync("users.json", JSON.stringify(users), "utf8");
 	};
 
 	const httpApp = express();
@@ -55,14 +63,12 @@ const main = () => {
 	const root = __dirname;
 	httpApp.get("/", (req, res) => { res.sendFile("index.html", {root}); });
 	httpApp.get("/index.js", (req, res) => { res.sendFile("index.js", {root}); });
-	const challenges = [];
+	const registerChallenges: {[userId: string]: string} = {};
 	httpApp.post("/register-challenge", (req, res) => {
 		const i = users.length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
-		const user = {userId, challenge};
-		users.push(user);
-		usersById[user.userId] = user;
+		registerChallenges[userId] = challenge;
 		saveUsers();
 		const response: types.RegisterChallengeResponse = {
 			rp: {
@@ -90,22 +96,16 @@ const main = () => {
 		console.log(body);
 		const userId = Buffer.from(b64urldecode(body.userId), "base64");
 		const userIdB64 = b64urlencode(userId.toString("base64"));
-		const user = usersById[userIdB64];
-		if (user == null) {
+		const challenge = registerChallenges[userIdB64];
+		if (challenge == null) {
 			res.json({"error": "Unknown or missing userId"});
 			return;
 		}
-		if (user.id != null || user.challenge == null) {
-			res.json({"error": "userId already registered"});
-			return;
-		}
+		delete registerChallenges[userIdB64];
 
 		const {authData, fmt, attStmt} = await cborParse(Buffer.from(body.attestationObject, "base64"));
 
 		const rpIdHash = authData.slice(0, 32);
-		const hostname = "localhost";
-		const origin = `https://${hostname}:4433`;
-		const hostnameHash = crypto.createHash('sha256').update(hostname, 'utf8').digest();
 		if (!bufferEqual(hostnameHash, rpIdHash)) {
 			res.json({"error": "wrong rpIdHash"});
 			return;
@@ -116,18 +116,16 @@ const main = () => {
 			res.json({"error": "UP not set"});
 			return;
 		}
-		const signCount = new Uint32Array(authData.slice(33, 37))[0];
+		const signCount = authData.readUInt32BE(33);
 
 		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
-		if (C.origin !== origin || C.type !== "webauthn.create" || C.challenge !== user.challenge || C.hashAlgorithm !== "SHA-256") {
-			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.create", challenge: user.challenge, hashAlgorithm: "SHA-256"}, got: C});
+		if (C.origin !== origin || C.type !== "webauthn.create" || C.challenge !== challenge || C.hashAlgorithm !== "SHA-256") {
+			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.create", challenge, hashAlgorithm: "SHA-256"}, got: C});
 			return;
 		}
 		const cDataHash = crypto.createHash('sha256').update(cData).digest();
 
-		// Let hash be the result of computing a hash over the cData using SHA-256.
-		// Using credentialPublicKey, verify that sig is a valid signature over the binary concatenation of authData and hash.
 		console.log({C, authData: authData.toString("base64"), fmt, attStmt, flags, signCount});
 		if (fmt !== "fido-u2f") {
 			res.json({error: "Sorry, your format is not implemented", fmt});
@@ -138,7 +136,9 @@ const main = () => {
 			res.json({error: "Sorry, we don't validate certificate chains here"});
 			return;
 		}
-		console.log({attCert, sig});
+		console.log({attCert: attCert.toString("base64"), sig});
+		// TODO: Let certificate public key be the public key conveyed by attCert. If certificate public key is not an Elliptic Curve (EC) public key over the P-256 curve, terminate this algorithm and return an appropriate error.
+		// https://w3c.github.io/webauthn/
 
 		const aaguid = authData.slice(37, 53);
 		const credentialIdLength = authData.readUInt16BE(53);
@@ -154,7 +154,23 @@ const main = () => {
 		console.log({credentialPublicKey});
 
 		const importedKey = await subtle.importKey("jwk", {...credentialPublicKey, alg: undefined}, {name: "ECDSA", namedCurve: "P-256"}, true, ["verify"]);
-		console.log({importedKey});
+
+		const publicKeyU2F = Buffer.concat([
+			Buffer.from([0x04]),
+			Buffer.from(credentialPublicKey.x, "base64"),
+			Buffer.from(credentialPublicKey.y, "base64"),
+		]);
+		const verificationData = Buffer.concat([
+			Buffer.from([0x00]),
+			rpIdHash,
+			cDataHash,
+			credentialId,
+			publicKeyU2F,
+		]);
+		// Let verificationData be the concatenation of (0x00 || rpIdHash || clientDataHash || credentialId || publicKeyU2F) (see Section 4.3 of [FIDO-U2F-Message-Formats]).
+		// Verify the sig using verificationData and the certificate public key per section 4.1.4 of [SEC1] with SHA-256 as the hash function used in step two.
+		console.log({credentialPublicKey, importedKey, publicKeyU2F: publicKeyU2F.toString("base64"), verificationData: verificationData.toString("base64"), sig: sig.toString("base64")});
+
 		const verifyResult = await subtle.verify(
 			{
 				name: "ECDSA",
@@ -162,39 +178,40 @@ const main = () => {
 			},
 			importedKey,
 			sig,
-			Buffer.concat([authData, cDataHash])
+			verificationData
 		);
 		if (!verifyResult) {
+			console.log("Verify failed");
 			res.json({"error": "Failed to verify that sig is a valid signature over the binary concatenation of authData and hash."});
 			return;
 		}
 
-		// TODO: Store credentialPublicKey and use it later
-		// TODO: Require an auth-challenge before actually storing the key
-
-		user.id = body.credentialId;
+		users[userIdB64] = {
+			credentialId: body.credentialId,
+			credentialPublicKey: credentialPublicKey as any,
+		};
 		saveUsers();
 		res.json({userId: userIdB64});
 	});
+
+	const authChallenges: {[challenge: string]: string} = {};
 	httpApp.post("/auth-challenge", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
 		console.log(req.body);
 		const userId = req.body.userId;
-		if (userId !== userId || userId < 0 || userId >= users.length) {
+		const user = users[userId];
+		if (user == null) {
 			res.json({"error": "Unknown or missing userId"});
 			return;
 		}
-		const id = users[userId].id;
-		if (id == null) {
-			res.json({"error": "userId not registered"});
-			return;
-		}
-		const challenge = crypto.randomBytes(32);
+		const credentialId: string = user.credentialId;
+		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
+		authChallenges[challenge] = userId;
 		const response: types.AuthChallengeResponse = {
-			challenge: challenge.toString("base64"),
+			challenge,
 			allowCredentials: [
 				{
-					id: id,
+					id: credentialId,
 					transports: ["usb", "nfc", "ble"],
 					type: "public-key",
 				}
@@ -209,24 +226,55 @@ const main = () => {
 		await new Promise((n) => express.json()(req, res, n));
 		const body: types.AuthResponseRequest = req.body;
 		console.log(body);
+		if (authChallenges[body.challenge] !== body.userId) {
+			console.log({body, expected: authChallenges[body.challenge]});
+			res.json({"error": "Unknown challenge"});
+			return;
+		}
+		const user = users[body.userId];
+		if (user == null) {
+			res.json({"error": "Unknown user"});
+			return;
+		}
+		delete authChallenges[body.challenge];
 
-		const authData = new Uint8Array(Buffer.from(body.authenticatorData, "base64"));
+		const authData = Buffer.from(body.authenticatorData, "base64");
 		const rpIdHash = authData.slice(0, 32);
-		// TODO XXX: Verify that rpIdHash is the sha256 hash of the hostname "localhost"
+		if (!bufferEqual(hostnameHash, rpIdHash)) {
+			res.json({"error": "wrong rpIdHash"});
+			return;
+		}
 		const flagsByte = authData[32];
 		const flags = {UP: flagsByte & 1, RFU1: flagsByte & 2, UV: flagsByte & 4, RFU2: flagsByte & 0x38, AT: flagsByte & 0x40, ED: flagsByte & 0x80};
-		// TODO XXX: Verify that User is Present (flags.UP !== 0)
-		const signCount = new Uint32Array(authData.slice(33, 37))[0];
+		if (!flags.UP) {
+			res.json({"error": "UP not set"});
+			return;
+		}
+		const signCount = authData.readUInt32BE(33);
 
 		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
-		// TODO XXX: Verify that the value of C.type is the string webauthn.get.
-		// TODO XXX: Verify that the value of C.challenge equals the base64url encoding of options.challenge.
-		// TODO XXX: Verify that the value of C.origin matches the Relying Party's origin.
+		if (C.origin !== origin || C.type !== "webauthn.get" || C.challenge !== body.challenge || C.hashAlgorithm !== "SHA-256") {
+			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.get", challenge: body.challenge, hashAlgorithm: "SHA-256"}, got: C});
+			return;
+		}
+		const cDataHash = crypto.createHash('sha256').update(cData).digest();
 
 		// Let hash be the result of computing a hash over the cData using SHA-256.
 		// Using credentialPublicKey, verify that sig is a valid signature over the binary concatenation of authData and hash.
-		console.log({flags, signCount, C});
+
+		const importedKey = await subtle.importKey("jwk", {...user.credentialPublicKey, alg: undefined}, {name: "ECDSA", namedCurve: "P-256"}, true, ["verify"]);
+		console.log({importedKey});
+		const verifyResult = await subtle.verify(
+			{
+				name: "ECDSA",
+				hash: "SHA-256",
+			},
+			importedKey,
+			body.signature,
+			Buffer.concat([Buffer.from(b64urldecode(body.authenticatorData), "base64"), cDataHash])
+		);
+		console.log({flags, signCount, C, verifyResult});
 		res.json({bar:true});
 	});
 	const port = 4433;
