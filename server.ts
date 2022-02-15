@@ -4,6 +4,8 @@ import https from 'https';
 import express from 'express';
 import helmet from 'helmet';
 
+import * as asn1js from 'asn1js';
+
 import cbor from 'cbor';
 import coseToJwk from 'cose-to-jwk';
 
@@ -72,7 +74,8 @@ const main = () => {
 		saveUsers();
 		const response: types.RegisterChallengeResponse = {
 			rp: {
-				name: "Webauthntest"
+				name: "Webauthntest",
+				id: "localhost",
 			},
 			user: {
 				id: userId,
@@ -86,6 +89,14 @@ const main = () => {
 			attestation: "direct",
 			timeout: 60000,
 			challenge,
+			// The excludeCredentials is something that can be
+			// ignored while you get something working, but which
+			// you’ll have to circle back and read the spec on
+			// before deploying anything real. It allows you to
+			// exclude tokens that the user has already created a
+			// key on when adding new keys.
+			// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
+			excludeCredentials: [],
 		};
 		console.log({response});
 		res.json(response);
@@ -105,7 +116,7 @@ const main = () => {
 
 		const {authData, fmt, attStmt} = await cborParse(Buffer.from(body.attestationObject, "base64"));
 
-		const rpIdHash = authData.slice(0, 32);
+		const rpIdHash: Buffer = authData.slice(0, 32);
 		if (!bufferEqual(hostnameHash, rpIdHash)) {
 			res.json({"error": "wrong rpIdHash"});
 			return;
@@ -120,11 +131,12 @@ const main = () => {
 
 		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
+		console.log({cData: cData.toString("utf8"), C});
 		if (C.origin !== origin || C.type !== "webauthn.create" || C.challenge !== challenge || C.hashAlgorithm !== "SHA-256") {
 			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.create", challenge, hashAlgorithm: "SHA-256"}, got: C});
 			return;
 		}
-		const cDataHash = crypto.createHash('sha256').update(cData).digest();
+		const cDataHash: Buffer = crypto.createHash('sha256').update(cData).digest();
 
 		console.log({C, authData: authData.toString("base64"), fmt, attStmt, flags, signCount});
 		if (fmt !== "fido-u2f") {
@@ -147,15 +159,25 @@ const main = () => {
 			res.json({error: "Sorry, credentialIdLength is bad", credentialIdLength});
 			return;
 		}
-		const credentialId = authData.slice(55, 55 + credentialIdLength);
+		const credentialId: Buffer = authData.slice(55, 55 + credentialIdLength);
 		const credentialPublicKeyCose = authData.slice(55 + credentialIdLength);
 		console.log({aaguid, credentialIdLength, credentialId, credentialPublicKey: credentialPublicKeyCose.toString("base64")});
+		// Parse COSE key. First nibble should be 0xa, for a small CBOR map.
 		const credentialPublicKey = coseToJwk(credentialPublicKeyCose);
 		console.log({credentialPublicKey});
 
-		const importedKey = await subtle.importKey("jwk", {...credentialPublicKey, alg: undefined}, {name: "ECDSA", namedCurve: "P-256"}, true, ["verify"]);
+		const jwk = {
+			kty: "EC",
+			crv: "P-256",
+			key_ops: ["sign", "verify"],
+			x: b64urlencode(credentialPublicKey.x),
+			y: b64urlencode(credentialPublicKey.y),
+		};
+		console.log({jwk});
+		const importedKey = await subtle.importKey("jwk", jwk, {name: "ECDSA", namedCurve: "P-256", hash: "SHA-256"}, true, ["verify"]);
 
-		const publicKeyU2F = Buffer.concat([
+		// Construct an X9.62 key (65 bytes long)
+		const publicKeyU2F: Buffer = Buffer.concat([
 			Buffer.from([0x04]),
 			Buffer.from(credentialPublicKey.x, "base64"),
 			Buffer.from(credentialPublicKey.y, "base64"),
@@ -167,17 +189,68 @@ const main = () => {
 			credentialId,
 			publicKeyU2F,
 		]);
+		console.log({
+			lengths: {
+				sig: sig.length,
+				rpIdHash: rpIdHash.length,
+				cDataHash: cDataHash.length,
+				credentialId: credentialId.length,
+				publicKeyU2F: publicKeyU2F.length,
+				verificationData: verificationData.length,
+				expected: 1 + 32 + 32 + credentialId.length + 65,
+			},
+		});
 		// Let verificationData be the concatenation of (0x00 || rpIdHash || clientDataHash || credentialId || publicKeyU2F) (see Section 4.3 of [FIDO-U2F-Message-Formats]).
 		// Verify the sig using verificationData and the certificate public key per section 4.1.4 of [SEC1] with SHA-256 as the hash function used in step two.
 		console.log({credentialPublicKey, importedKey, publicKeyU2F: publicKeyU2F.toString("base64"), verificationData: verificationData.toString("base64"), sig: sig.toString("base64")});
 
+		const fixedBuffer = (buf: ArrayBuffer, n: number) => Buffer.concat([
+			Buffer.from(new Array(n)),
+			Buffer.from(buf),
+		]).slice(-n);
+
+		const asn1SigToRaw = (sig: Buffer): Buffer => {
+			const ber = asn1js.fromBER(new Uint8Array(sig).buffer);
+			const r: asn1js.Sequence = ber.result as any;
+			const ints: asn1js.Integer[] = r.valueBlock.value as any;
+
+			return Buffer.concat([
+				fixedBuffer(ints[0].valueBlock.valueHex, 32),
+				fixedBuffer(ints[1].valueBlock.valueHex, 32),
+			]);
+		};
+
+		const sig2 = asn1SigToRaw(sig);
+
+		const myKey = await subtle.generateKey({name: "ECDSA", namedCurve: "P-256", hash: "SHA-256"}, true, ["verify", "sign"]);
+		console.log({myKey});
+		const mySig = await subtle.sign(
+			{
+				name: "ECDSA",
+				hash: {name: "SHA-256"},
+			},
+			myKey.privateKey,
+			verificationData
+		);
+		const myResult = await subtle.verify(
+			{
+				name: "ECDSA",
+				hash: {name: "SHA-256"},
+			},
+			myKey.publicKey,
+			Buffer.from(mySig),
+			verificationData
+		);
+		console.log({myResult, mySig: Buffer.from(mySig).toString("base64"), sig: sig.toString("base64"), sig2: sig2.toString("base64")});
+
+		// Verify the ASN.1 signature "sig"
 		const verifyResult = await subtle.verify(
 			{
 				name: "ECDSA",
 				hash: "SHA-256",
 			},
 			importedKey,
-			sig,
+			sig2,
 			verificationData
 		);
 		if (!verifyResult) {

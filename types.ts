@@ -1,5 +1,8 @@
 export interface RegisterChallengeResponse {
-	rp: {name: string};
+	rp: {
+		name: string;
+		id: string;
+	};
 	user: {
 		id: string;
 		name: string;
@@ -12,6 +15,7 @@ export interface RegisterChallengeResponse {
 	attestation: "direct",
 	timeout: number;
 	challenge: string;
+	excludeCredentials: [];
 }
 
 export interface RegisterResponseRequest {
