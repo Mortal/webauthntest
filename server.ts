@@ -77,7 +77,8 @@ const routeRp = () => {
 	};
 
 	const registerChallenges: {[userId: string]: string} = {};
-	router.post("/register-challenge", (req, res) => {
+
+	router.route("/register-challenge").post(async (req, res) => {
 		const i = users.length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
@@ -112,9 +113,9 @@ const routeRp = () => {
 		console.log({response});
 		res.json(response);
 	});
-	router.post("/register-response", async (req, res) => {
-		await new Promise((n) => express.json()(req, res, n));
-		const body: types.RegisterResponseRequest = req.body;
+
+	router.route("/register-response").use(express.json()).post(async (req, res) => {
+		const body: types.RegisterResponseRequest<string> = req.body;
 		console.log(body);
 		const userId = Buffer.from(b64urldecode(body.userId), "base64");
 		const userIdB64 = b64urlencode(userId.toString("base64"));
@@ -279,8 +280,8 @@ const routeRp = () => {
 	});
 
 	const authChallenges: {[challenge: string]: string} = {};
-	router.post("/auth-challenge", async (req, res) => {
-		await new Promise((n) => express.json()(req, res, n));
+
+	router.route("/auth-challenge").use(express.json()).post(async (req, res) => {
 		console.log(req.body);
 		const userId = req.body.userId;
 		const user = users[userId];
@@ -306,8 +307,8 @@ const routeRp = () => {
 		console.log(response.allowCredentials[0]);
 		res.json(response);
 	});
-	router.post("/auth-response", async (req, res) => {
-		await new Promise((n) => express.json()(req, res, n));
+
+	router.route("/auth-response").use(express.json()).post(async (req, res) => {
 		const body: types.AuthResponseRequest = req.body;
 		console.log(body);
 		if (authChallenges[body.challenge] !== body.userId) {
