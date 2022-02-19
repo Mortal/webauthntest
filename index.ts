@@ -39,7 +39,7 @@ async function test() {
 
 async function webauthntest_register() {
 	const serverChallenge: types.RegisterChallengeResponse = await (await window.fetch(
-		'/register-challenge',
+		'/rp/register-challenge',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
@@ -76,7 +76,7 @@ async function webauthntest_register() {
 		attestationObject: b64urlencode(await b64encode(credResponse.attestationObject)),
 	}
 	const result = await (await window.fetch(
-		'/register-response',
+		'/rp/register-response',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
@@ -91,7 +91,7 @@ async function webauthntest_auth() {
 	const userIdElement = document.getElementById("userid") as HTMLInputElement | null;
 	if (userIdElement == null) return;
 	const serverChallenge: types.AuthChallengeResponse = await (await window.fetch(
-		'/auth-challenge',
+		'/rp/auth-challenge',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
@@ -133,7 +133,7 @@ async function webauthntest_auth() {
 		userHandle: userHandle == null ? null : await b64encode(userHandle),
 	};
 	const result = await (await window.fetch(
-		'/auth-response',
+		'/rp/auth-response',
 		{
 			method: "POST",
 			headers: {"Content-Type": "application/json"},

@@ -45,8 +45,25 @@ const bufferEqual = (a: Buffer, b: Buffer) => {
 
 const main = () => {
 
+	const httpApp = express();
+	// httpApp.use(helmet());
+	const root = __dirname;
+	httpApp.use("/rp", routeRp());
+	httpApp.get("/", (req, res) => { res.sendFile("index.html", {root}); });
+	httpApp.get("/index.js", (req, res) => { res.sendFile("index.js", {root}); });
+
 	const key = fs.readFileSync('key.pem', 'utf8');
 	const cert = fs.readFileSync('cert.pem', 'utf8');
+
+	const webserver = https.createServer({key, cert}, httpApp);
+	const port = 4433;
+	webserver.listen(port, "localhost", () => {
+		console.log(`Listening on https://localhost:${port}`);
+        });
+};
+
+const routeRp = () => {
+	const router = express.Router();
 
 	const hostname = "localhost";
 	const origin = `https://${hostname}:4433`;
@@ -59,14 +76,8 @@ const main = () => {
 		fs.writeFileSync("users.json", JSON.stringify(users), "utf8");
 	};
 
-	const httpApp = express();
-	// httpApp.use(helmet());
-	const webserver = https.createServer({key, cert}, httpApp);
-	const root = __dirname;
-	httpApp.get("/", (req, res) => { res.sendFile("index.html", {root}); });
-	httpApp.get("/index.js", (req, res) => { res.sendFile("index.js", {root}); });
 	const registerChallenges: {[userId: string]: string} = {};
-	httpApp.post("/register-challenge", (req, res) => {
+	router.post("/register-challenge", (req, res) => {
 		const i = users.length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
@@ -101,7 +112,7 @@ const main = () => {
 		console.log({response});
 		res.json(response);
 	});
-	httpApp.post("/register-response", async (req, res) => {
+	router.post("/register-response", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
 		const body: types.RegisterResponseRequest = req.body;
 		console.log(body);
@@ -268,7 +279,7 @@ const main = () => {
 	});
 
 	const authChallenges: {[challenge: string]: string} = {};
-	httpApp.post("/auth-challenge", async (req, res) => {
+	router.post("/auth-challenge", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
 		console.log(req.body);
 		const userId = req.body.userId;
@@ -295,7 +306,7 @@ const main = () => {
 		console.log(response.allowCredentials[0]);
 		res.json(response);
 	});
-	httpApp.post("/auth-response", async (req, res) => {
+	router.post("/auth-response", async (req, res) => {
 		await new Promise((n) => express.json()(req, res, n));
 		const body: types.AuthResponseRequest = req.body;
 		console.log(body);
@@ -350,10 +361,7 @@ const main = () => {
 		console.log({flags, signCount, C, verifyResult});
 		res.json({bar:true});
 	});
-	const port = 4433;
-	webserver.listen(port, "localhost", () => {
-		console.log(`Listening on https://localhost:${port}`);
-        });
+	return router;
 };
 
 main();
