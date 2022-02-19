@@ -34,6 +34,10 @@ const cborParse = (b: Buffer): Promise<any> => {
 	});
 };
 
+const cborEncode = (d: any): Promise<Buffer> => {
+	return cbor.encodeAsync(d, {});
+};
+
 const bufferEqual = (a: Buffer, b: Buffer) => {
 	if (a.length !== b.length) return false;
 	let ineq = 0;
@@ -49,6 +53,7 @@ const main = () => {
 	// httpApp.use(helmet());
 	const root = __dirname;
 	httpApp.use("/rp", routeRp());
+	httpApp.use("/credentials", routeCredentials());
 	httpApp.get("/", (req, res) => { res.sendFile("index.html", {root}); });
 	httpApp.get("/index.js", (req, res) => { res.sendFile("index.js", {root}); });
 
@@ -363,6 +368,28 @@ const routeRp = () => {
 		res.json({bar:true});
 	});
 	return router;
+};
+
+const routeCredentials = () => {
+	const router = express.Router();
+
+	router.route("/create").use(express.json()).post(async (req, res) => {
+		const body: types.CredentialCreationOptions<string> = req.body;
+		const {publicKey} = body;
+		const res: CredentialCreationResult<string> = {
+			response: {
+				userId: body.user.id,
+				attestationObject: "some cbor object...",
+				clientDataJSON: b64urlencode(Buffer.from(JSON.stringify({
+					origin: "https://localhost:4433",
+					type: "webauthn.create",
+					challenge: body.challenge,
+					hashAlgorithm: "SHA-256",
+				})).toString("base64")),
+				credentialId: "foo",
+			},
+		};
+	});
 };
 
 main();

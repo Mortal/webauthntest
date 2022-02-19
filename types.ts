@@ -18,6 +18,10 @@ export interface RegisterChallengeResponse<B> {
 	excludeCredentials: [];
 }
 
+export interface CredentialCreationOptions<B> {
+	publicKey: RegisterChallengeResponse<B>;
+}
+
 export interface RegisterResponseRequest<B> {
 	challenge: B;
 	userId: B;
@@ -25,6 +29,15 @@ export interface RegisterResponseRequest<B> {
 	credentialId: string;
 	clientDataJSON: B;
 	attestationObject: B;
+}
+
+export interface CredentialCreationResult<B> {
+	response: {
+		type: string;
+		id: string;
+		clientDataJSON: B;
+		attestationObject: B;
+	};
 }
 
 export interface AuthChallengeResponse {
