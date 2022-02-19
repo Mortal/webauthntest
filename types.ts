@@ -1,10 +1,10 @@
-export interface RegisterChallengeResponse {
+export interface RegisterChallengeResponse<B> {
 	rp: {
 		name: string;
 		id: string;
 	};
 	user: {
-		id: string;
+		id: B;
 		name: string;
 		displayName: string;
 	};
@@ -14,17 +14,17 @@ export interface RegisterChallengeResponse {
 	}];
 	attestation: "direct",
 	timeout: number;
-	challenge: string;
+	challenge: B;
 	excludeCredentials: [];
 }
 
-export interface RegisterResponseRequest {
-	challenge: string;
-	userId: string;
+export interface RegisterResponseRequest<B> {
+	challenge: B;
+	userId: B;
 	type: string;
 	credentialId: string;
-	clientDataJSON: string;
-	attestationObject: string;
+	clientDataJSON: B;
+	attestationObject: B;
 }
 
 export interface AuthChallengeResponse {

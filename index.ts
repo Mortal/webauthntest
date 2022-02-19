@@ -38,7 +38,7 @@ async function test() {
 // test();
 
 async function webauthntest_register() {
-	const serverChallenge: types.RegisterChallengeResponse = await (await window.fetch(
+	const serverChallenge: types.RegisterChallengeResponse<string> = await (await window.fetch(
 		'/rp/register-challenge',
 		{
 			method: "POST",
@@ -67,7 +67,7 @@ async function webauthntest_register() {
 	if (cred == null) return;
 	console.log(cred);
 	const credResponse = cred.response as AuthenticatorAttestationResponse;
-	const registerResponseRequest: types.RegisterResponseRequest = {
+	const registerResponseRequest: types.RegisterResponseRequest<string> = {
 		challenge: b64urlencode(await b64encode(challenge)),
 		userId: b64urlencode(await b64encode(userId)),
 		type: cred.type,
