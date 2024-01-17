@@ -1,0 +1,2 @@
+#!/bin/sh
+node_modules/.bin/tsc --target esnext --module amd --strict --esModuleInterop --skipLibCheck --forceConsistentCasingInFileNames index.ts --outFile index.js "$@"
