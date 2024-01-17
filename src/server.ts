@@ -2,15 +2,15 @@ import crypto from 'crypto';
 import fs from 'fs';
 import https from 'https';
 import express from 'express';
-import helmet from 'helmet';
+// import helmet from 'helmet';
 
 import * as asn1js from 'asn1js';
 
 import cbor from 'cbor';
 import coseToJwk from 'cose-to-jwk';
 
-import { b64urlencode, b64urldecode } from './shared';
-import * as types from './types';
+import { b64urlencode, b64urldecode } from './shared.ts';
+import * as types from './types.ts';
 
 const subtle = (crypto.webcrypto as any).subtle;
 
@@ -34,10 +34,6 @@ const cborParse = (b: Buffer): Promise<any> => {
 	});
 };
 
-const cborEncode = (d: any): Promise<Buffer> => {
-	return cbor.encodeAsync(d, {});
-};
-
 const bufferEqual = (a: Buffer, b: Buffer) => {
 	if (a.length !== b.length) return false;
 	let ineq = 0;
@@ -51,11 +47,11 @@ const main = () => {
 
 	const httpApp = express();
 	// httpApp.use(helmet());
-	const root = __dirname;
+	// const root = __dirname;
 	httpApp.use("/rp", routeRp());
 	httpApp.use("/credentials", routeCredentials());
-	httpApp.get("/", (req, res) => { res.sendFile("index.html", {root}); });
-	httpApp.get("/index.js", (req, res) => { res.sendFile("index.js", {root}); });
+	// httpApp.get("/", (_req, res) => { res.sendFile("index.html", {root}); });
+	// httpApp.get("/index.js", (_req, res) => { res.sendFile("index.js", {root}); });
 
 	const key = fs.readFileSync('key.pem', 'utf8');
 	const cert = fs.readFileSync('cert.pem', 'utf8');
@@ -83,13 +79,13 @@ const routeRp = () => {
 
 	const registerChallenges: {[userId: string]: string} = {};
 
-	router.route("/register-challenge").post(async (req, res) => {
+	router.route("/register-challenge").post(async (_req, res) => {
 		const i = users.length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		registerChallenges[userId] = challenge;
 		saveUsers();
-		const response: types.RegisterChallengeResponse = {
+		const response: types.RegisterChallengeResponse<string> = {
 			rp: {
 				name: "Webauthntest",
 				id: "localhost",
@@ -119,8 +115,8 @@ const routeRp = () => {
 		res.json(response);
 	});
 
-	router.route("/register-response").use(express.json()).post(async (req, res) => {
-		const body: types.RegisterResponseRequest<string> = req.body;
+	router.route("/register-response").post(async (req, res) => {
+		const body: types.RegisterResponseRequest<string> = JSON.parse(req.body);
 		console.log(body);
 		const userId = Buffer.from(b64urldecode(body.userId), "base64");
 		const userIdB64 = b64urlencode(userId.toString("base64"));
@@ -286,9 +282,9 @@ const routeRp = () => {
 
 	const authChallenges: {[challenge: string]: string} = {};
 
-	router.route("/auth-challenge").use(express.json()).post(async (req, res) => {
+	router.route("/auth-challenge").post(async (req, res) => {
 		console.log(req.body);
-		const userId = req.body.userId;
+		const userId = JSON.parse(req.body).userId;
 		const user = users[userId];
 		if (user == null) {
 			res.json({"error": "Unknown or missing userId"});
@@ -313,7 +309,7 @@ const routeRp = () => {
 		res.json(response);
 	});
 
-	router.route("/auth-response").use(express.json()).post(async (req, res) => {
+	router.route("/auth-response").post(async (req, res) => {
 		const body: types.AuthResponseRequest = req.body;
 		console.log(body);
 		if (authChallenges[body.challenge] !== body.userId) {
@@ -373,23 +369,28 @@ const routeRp = () => {
 const routeCredentials = () => {
 	const router = express.Router();
 
-	router.route("/create").use(express.json()).post(async (req, res) => {
-		const body: types.CredentialCreationOptions<string> = req.body;
+	router.route("/create")
+	// .use(express.json())
+	.post(async (req, res) => {
+		const body: types.CredentialCreationOptions<string> = JSON.parse(req.body);
 		const {publicKey} = body;
-		const res: CredentialCreationResult<string> = {
+		const result: types.CredentialCreationResult<string> = {
 			response: {
-				userId: body.user.id,
+				id: publicKey.user.id,
 				attestationObject: "some cbor object...",
 				clientDataJSON: b64urlencode(Buffer.from(JSON.stringify({
 					origin: "https://localhost:4433",
 					type: "webauthn.create",
-					challenge: body.challenge,
+					challenge: publicKey.challenge,
 					hashAlgorithm: "SHA-256",
 				})).toString("base64")),
-				credentialId: "foo",
+				type: "foo",
 			},
 		};
+		res.json(result);
 	});
+
+	return router;
 };
 
 main();
