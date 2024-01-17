@@ -1,5 +1,6 @@
-import { b64urlencode, b64urldecode } from 'shared';
-import type * as types from 'types';
+import './style.css';
+import { b64urlencode, b64urldecode } from './shared';
+import type * as types from './types';
 
 async function b64decode(a: string): Promise<ArrayBuffer> {
 	return await (await fetch("data:application/octet-stream;base64," + a)).arrayBuffer();
