@@ -4,7 +4,7 @@ import https from 'https';
 import express from 'express';
 // import helmet from 'helmet';
 
-import * as asn1js from 'asn1js';
+// import * as asn1js from 'asn1js';
 
 import cbor from 'cbor';
 import coseToJwk from 'cose-to-jwk';
@@ -12,7 +12,7 @@ import coseToJwk from 'cose-to-jwk';
 import { b64urlencode, b64urldecode } from './shared.ts';
 import * as types from './types.ts';
 
-const subtle = (crypto.webcrypto as any).subtle;
+const subtle = crypto.subtle;
 
 interface User {
 	credentialId: string;
@@ -67,7 +67,7 @@ const routeRp = () => {
 	const router = express.Router();
 
 	const hostname = "localhost";
-	const origin = `https://${hostname}:4433`;
+	const origins = [`https://${hostname}:4433`, `https://${hostname}:5173`];
 	const hostnameHash = crypto.createHash('sha256').update(hostname, 'utf8').digest();
 
 	const users: {[userId: string]: User} = fs.statSync("users.json", {throwIfNoEntry: false}) != null ? JSON.parse(fs.readFileSync("users.json", "utf8")) : {};
@@ -80,7 +80,7 @@ const routeRp = () => {
 	const registerChallenges: {[userId: string]: string} = {};
 
 	router.route("/register-challenge").post(async (_req, res) => {
-		const i = users.length;
+		const i = Object.keys(users).length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
 		registerChallenges[userId] = challenge;
@@ -115,8 +115,8 @@ const routeRp = () => {
 		res.json(response);
 	});
 
-	router.route("/register-response").post(async (req, res) => {
-		const body: types.RegisterResponseRequest<string> = JSON.parse(req.body);
+	router.route("/register-response").post(express.json(), async (req, res) => {
+		const body: types.RegisterResponseRequest<string> = req.body;
 		console.log(body);
 		const userId = Buffer.from(b64urldecode(body.userId), "base64");
 		const userIdB64 = b64urlencode(userId.toString("base64"));
@@ -145,11 +145,12 @@ const routeRp = () => {
 		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
 		console.log({cData: cData.toString("utf8"), C});
-		if (C.origin !== origin || C.type !== "webauthn.create" || C.challenge !== challenge || C.hashAlgorithm !== "SHA-256") {
-			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.create", challenge, hashAlgorithm: "SHA-256"}, got: C});
+		if (!origins.includes(C.origin) || C.type !== "webauthn.create" || C.challenge !== challenge || !["SHA-256", undefined].includes(C.hashAlgorithm)) {
+			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origins, type: "webauthn.create", challenge, hashAlgorithm: "SHA-256"}, got: C});
 			return;
 		}
 		const cDataHash: Buffer = crypto.createHash('sha256').update(cData).digest();
+		console.log({cDataHash})
 
 		console.log({C, authData: authData.toString("base64"), fmt, attStmt, flags, signCount});
 		if (fmt !== "fido-u2f") {
@@ -182,7 +183,8 @@ const routeRp = () => {
 		const jwk = {
 			kty: "EC",
 			crv: "P-256",
-			key_ops: ["sign", "verify"],
+			alg: "ES256", // credentialPublicKey.alg,
+			// key_ops: ["sign", "verify"],
 			x: b64urlencode(credentialPublicKey.x),
 			y: b64urlencode(credentialPublicKey.y),
 		};
@@ -217,23 +219,42 @@ const routeRp = () => {
 		// Verify the sig using verificationData and the certificate public key per section 4.1.4 of [SEC1] with SHA-256 as the hash function used in step two.
 		console.log({credentialPublicKey, importedKey, publicKeyU2F: publicKeyU2F.toString("base64"), verificationData: verificationData.toString("base64"), sig: sig.toString("base64")});
 
-		const fixedBuffer = (buf: ArrayBuffer, n: number) => Buffer.concat([
-			Buffer.from(new Array(n)),
-			Buffer.from(buf),
-		]).slice(-n);
+		// const fixedBuffer = (buf: ArrayBuffer, n: number) => {
+		// 	console.log("fixedBuffer", {n, l: buf.byteLength})
+		// 	return Buffer.concat([
+		// 		Buffer.from(new Array(n - buf.byteLength).fill(0)),
+		// 		Buffer.from(buf),
+		// 	])
+		// };
 
-		const asn1SigToRaw = (sig: Buffer): Buffer => {
-			const ber = asn1js.fromBER(new Uint8Array(sig).buffer);
-			const r: asn1js.Sequence = ber.result as any;
-			const ints: asn1js.Integer[] = r.valueBlock.value as any;
+		// const asn1SigToRaw = (sig: Buffer): Buffer => {
+		// 	const ber = asn1js.fromBER(new Uint8Array(sig).buffer);
+		// 	const r: asn1js.Sequence = ber.result as any;
+		// 	const ints: asn1js.Integer[] = r.valueBlock.value as any;
 
-			return Buffer.concat([
-				fixedBuffer(ints[0].valueBlock.valueHex, 32),
-				fixedBuffer(ints[1].valueBlock.valueHex, 32),
-			]);
+		// 	return Buffer.concat([
+		// 		fixedBuffer(ints[0].valueBlock.valueHex, 32),
+		// 		fixedBuffer(ints[1].valueBlock.valueHex, 32),
+		// 	]);
+		// };
+
+		const fixedBuffer2 = (b: Buffer, n: number): Buffer => {
+			console.log("fixedBuffer2", {n, l: b.length})
+			return Buffer.concat([Buffer.from(new Array(n).fill(0)), b]).slice(b.length);
+		}
+
+		const asn1SigToRaw2 = (sig: Buffer): Buffer => {
+			// https://github.com/webauthn-open-source/fido2-lib/blob/89be15ab538ec0cbc557527c007ffa1c8729de7c/lib/toolbox.js#L71
+			const rStart = 4;
+			const rEnd = rStart + sig.readUInt8(3)
+			const sStart = rEnd + 2;
+			const r = fixedBuffer2(sig.slice(rStart, rEnd), 32);
+			const s = fixedBuffer2(sig.slice(sStart), 32);
+			return Buffer.concat([r, s]);
 		};
 
-		const sig2 = asn1SigToRaw(sig);
+		// const sig2 = asn1SigToRaw(sig);
+		const sig2 = asn1SigToRaw2(sig);
 
 		const myKey = await subtle.generateKey({name: "ECDSA", namedCurve: "P-256", hash: "SHA-256"}, true, ["verify", "sign"]);
 		console.log({myKey});
@@ -260,11 +281,11 @@ const routeRp = () => {
 		const verifyResult = await subtle.verify(
 			{
 				name: "ECDSA",
-				hash: "SHA-256",
+				hash: {name: "SHA-256"},
 			},
 			importedKey,
 			sig2,
-			verificationData
+			new Uint8Array(verificationData)
 		);
 		if (!verifyResult) {
 			console.log("Verify failed");
@@ -282,9 +303,9 @@ const routeRp = () => {
 
 	const authChallenges: {[challenge: string]: string} = {};
 
-	router.route("/auth-challenge").post(async (req, res) => {
+	router.route("/auth-challenge").post(express.json(), async (req, res) => {
 		console.log(req.body);
-		const userId = JSON.parse(req.body).userId;
+		const userId = req.body.userId;
 		const user = users[userId];
 		if (user == null) {
 			res.json({"error": "Unknown or missing userId"});
@@ -340,8 +361,8 @@ const routeRp = () => {
 
 		const cData = Buffer.from(body.clientDataJSON, "base64");
 		const C = JSON.parse(cData.toString("utf8"));
-		if (C.origin !== origin || C.type !== "webauthn.get" || C.challenge !== body.challenge || C.hashAlgorithm !== "SHA-256") {
-			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origin, type: "webauthn.get", challenge: body.challenge, hashAlgorithm: "SHA-256"}, got: C});
+		if (!origins.includes(C.origin) || C.type !== "webauthn.get" || C.challenge !== body.challenge || C.hashAlgorithm !== "SHA-256") {
+			res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origins, type: "webauthn.get", challenge: body.challenge, hashAlgorithm: "SHA-256"}, got: C});
 			return;
 		}
 		const cDataHash = crypto.createHash('sha256').update(cData).digest();
@@ -351,13 +372,14 @@ const routeRp = () => {
 
 		const importedKey = await subtle.importKey("jwk", {...user.credentialPublicKey, alg: undefined}, {name: "ECDSA", namedCurve: "P-256"}, true, ["verify"]);
 		console.log({importedKey});
+		console.log({"body.signature": body.signature})
 		const verifyResult = await subtle.verify(
 			{
 				name: "ECDSA",
 				hash: "SHA-256",
 			},
 			importedKey,
-			body.signature,
+			Buffer.from(body.signature),
 			Buffer.concat([Buffer.from(b64urldecode(body.authenticatorData), "base64"), cDataHash])
 		);
 		console.log({flags, signCount, C, verifyResult});
@@ -370,9 +392,8 @@ const routeCredentials = () => {
 	const router = express.Router();
 
 	router.route("/create")
-	// .use(express.json())
-	.post(async (req, res) => {
-		const body: types.CredentialCreationOptions<string> = JSON.parse(req.body);
+	.post(express.json(), async (req, res) => {
+		const body: types.CredentialCreationOptions<string> = req.body;
 		const {publicKey} = body;
 		const result: types.CredentialCreationResult<string> = {
 			response: {
