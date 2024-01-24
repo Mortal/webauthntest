@@ -14,9 +14,9 @@ import * as types from './types.ts';
 
 import { 
     // Registration 
-    generateRegistrationOptions, 
-    verifyRegistrationResponse, 
-	GenerateRegistrationOptionsOpts,
+    // generateRegistrationOptions, 
+    verifyRegistrationResponse,
+	// GenerateRegistrationOptionsOpts,
 	VerifyRegistrationResponseOpts,
 	// VerifiedRegistrationResponse,
     // Authentication 
@@ -105,30 +105,65 @@ const routeRp = () => {
 	router.route("/register-challenge").post(async (_req, res) => {
 		const i = Object.keys(users).length;
 		const userId = b64urlencode(crypto.randomBytes(32).toString("base64"));
-		const opts: GenerateRegistrationOptionsOpts = {
-			rpName: "Webauthntest",
-			rpID: "localhost",
-			userID: userId,
-			userName: `user${i}@example.com`,
-			timeout: 60000,
-			attestationType: 'direct',
-			// The excludeCredentials is something that can be
-			// ignored while you get something working, but which
-			// you’ll have to circle back and read the spec on
-			// before deploying anything real. It allows you to
-			// exclude tokens that the user has already created a
-			// key on when adding new keys.
-			// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
-			excludeCredentials: [],
-			supportedAlgorithmIDs: [-7],
-			// extensions: {
-			// 	credProps: true,
-			// 	hmacCreateSecret: false
-			// }
+		const rpName = "Webauthntest";
+		const rpID = "localhost";
+		const userID = userId;
+		const userName = `user${i}@example.com`;
+		const timeout = 60000;
+		const attestationType = 'direct';
+		// The excludeCredentials is something that can be
+		// ignored while you get something working, but which
+		// you’ll have to circle back and read the spec on
+		// before deploying anything real. It allows you to
+		// exclude tokens that the user has already created a
+		// key on when adding new keys.
+		// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
+		// const excludeCredentials = [];
+		const supportedAlgorithmIDs = [-7];
+		// const extensions = undefined; 
+		// const extensions = {
+		// 	credProps: true,
+		// 	hmacCreateSecret: false
+		// }
+		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
+		const userDisplayName = userName;
+		const defaultAuthenticatorSelection = {
+			residentKey: 'preferred',
+			userVerification: 'preferred',
 		};
-		const response = await generateRegistrationOptions(opts);
-		const challenge = response.challenge;
-		// const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
+		const authenticatorSelection = {
+			...defaultAuthenticatorSelection,
+			requireResidentKey: false,
+		};
+		// const response = await generateRegistrationOptions(opts);
+		const pubKeyCredParams = supportedAlgorithmIDs.map((id) => ({
+			alg: id,
+			type: 'public-key',
+		}));
+		const response = {
+			challenge,
+			rp: {
+				name: rpName,
+				id: rpID,
+			},
+			user: {
+				id: userID,
+				name: userName,
+				displayName: userDisplayName,
+			},
+			pubKeyCredParams,
+			timeout,
+			attestation: attestationType,
+			// excludeCredentials: excludeCredentials.map((cred) => ({
+			// 	...cred,
+			// 	id: isoBase64URL.fromBuffer(cred.id),
+			// })),
+			authenticatorSelection,
+			extensions: {
+				credProps: true,
+			},
+		};
+	
 		registerChallenges[userId] = challenge;
 		saveUsers();
 		// const response: types.RegisterChallengeResponse<string> = {
