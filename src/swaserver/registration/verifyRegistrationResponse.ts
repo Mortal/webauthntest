@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import type {
   COSEAlgorithmIdentifier,
   CredentialDeviceType,
@@ -11,29 +13,21 @@ import {
 import { AuthenticationExtensionsAuthenticatorOutputs } from '../helpers/decodeAuthenticatorExtensions.ts';
 import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
 import { parseAuthenticatorData } from '../helpers/parseAuthenticatorData.ts';
-import { toHash } from '../helpers/toHash.ts';
 import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
 import { COSEKEYS } from '../helpers/cose.ts';
 import { convertAAGUIDToString } from '../helpers/convertAAGUIDToString.ts';
 import { parseBackupFlags } from '../helpers/parseBackupFlags.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
-import { isoBase64URL } from '../helpers/iso/index.ts';
-import { SettingsService } from '../services/settingsService.ts';
 
 import { supportedCOSEAlgorithmIdentifiers } from './generateRegistrationOptions.ts';
 import { verifyAttestationFIDOU2F } from './verifications/verifyAttestationFIDOU2F.ts';
-import { verifyAttestationPacked } from './verifications/verifyAttestationPacked.ts';
-import { verifyAttestationAndroidSafetyNet } from './verifications/verifyAttestationAndroidSafetyNet.ts';
-import { verifyAttestationTPM } from './verifications/tpm/verifyAttestationTPM.ts';
-import { verifyAttestationAndroidKey } from './verifications/verifyAttestationAndroidKey.ts';
-import { verifyAttestationApple } from './verifications/verifyAttestationApple.ts';
+import { b64urldecode } from '../../shared.ts';
 
 export type VerifyRegistrationResponseOpts = {
   response: RegistrationResponseJSON;
-  expectedChallenge: string | ((challenge: string) => boolean | Promise<boolean>);
-  expectedOrigin: string | string[];
-  expectedRPID?: string | string[];
-  expectedType?: string | string[];
+  expectedChallenge: string[];
+  expectedOrigin: string[];
+  expectedRPID: string[];
   requireUserVerification?: boolean;
   supportedAlgorithmIDs?: COSEAlgorithmIdentifier[];
 };
@@ -62,7 +56,6 @@ export async function verifyRegistrationResponse(
     expectedChallenge,
     expectedOrigin,
     expectedRPID,
-    expectedType,
     requireUserVerification = true,
     supportedAlgorithmIDs = supportedCOSEAlgorithmIdentifiers,
   } = options;
@@ -92,29 +85,14 @@ export async function verifyRegistrationResponse(
   const { type, origin, challenge, tokenBinding } = clientDataJSON;
 
   // Make sure we're handling an registration
-  if (Array.isArray(expectedType)) {
-    if (!expectedType.includes(type)) {
-      const joinedExpectedType = expectedType.join(', ');
-      throw new Error(`Unexpected registration response type "${type}", expected one of: ${joinedExpectedType}`);
-    }
-  } else if (expectedType) {
-    if (type !== expectedType) {
-      throw new Error(`Unexpected registration response type "${type}", expected "${expectedType}"`);
-    }
-  } else if (type !== 'webauthn.create') {
+  if (type !== 'webauthn.create') {
     throw new Error(`Unexpected registration response type: ${type}`);
   }
 
   // Ensure the device provided the challenge we gave it
-  if (typeof expectedChallenge === 'function') {
-    if (!(await expectedChallenge(challenge))) {
-      throw new Error(
-        `Custom challenge verifier returned false for registration response challenge "${challenge}"`,
-      );
-    }
-  } else if (challenge !== expectedChallenge) {
+  if (!expectedChallenge.includes(challenge)) {
     throw new Error(
-      `Unexpected registration response challenge "${challenge}", expected "${expectedChallenge}"`,
+      "Wrong registration response challenge",
     );
   }
 
@@ -127,12 +105,6 @@ export async function verifyRegistrationResponse(
             ', ',
           )
         }`,
-      );
-    }
-  } else {
-    if (origin !== expectedOrigin) {
-      throw new Error(
-        `Unexpected registration response origin "${origin}", expected "${expectedOrigin}"`,
       );
     }
   }
@@ -151,9 +123,7 @@ export async function verifyRegistrationResponse(
     }
   }
 
-  const attestationObject = isoBase64URL.toBuffer(
-    attestationResponse.attestationObject,
-  );
+  const attestationObject = Buffer.from(b64urldecode(attestationResponse.attestationObject), "base64")
   const decodedAttestationObject = decodeAttestationObject(attestationObject);
   const fmt = decodedAttestationObject.get('fmt');
   const authData = decodedAttestationObject.get('authData');
@@ -171,17 +141,8 @@ export async function verifyRegistrationResponse(
   } = parsedAuthData;
 
   // Make sure the response's RP ID is ours
-  let matchedRPID: string | undefined;
-  if (expectedRPID) {
-    let expectedRPIDs: string[] = [];
-    if (typeof expectedRPID === 'string') {
-      expectedRPIDs = [expectedRPID];
-    } else {
-      expectedRPIDs = expectedRPID;
-    }
-
-    matchedRPID = await matchExpectedRPID(rpIdHash, expectedRPIDs);
-  }
+  let matchedRPID = matchExpectedRPID(Buffer.from(rpIdHash), expectedRPID);
+  if (matchedRPID == null) throw new Error("Unexpected RPID");
 
   // Make sure someone was physically present
   if (!flags.up) {
@@ -222,12 +183,9 @@ export async function verifyRegistrationResponse(
     );
   }
 
-  const clientDataHash = await toHash(
-    isoBase64URL.toBuffer(attestationResponse.clientDataJSON),
-  );
-  const rootCertificates = SettingsService.getRootCertificates({
-    identifier: fmt,
-  });
+  const clientDataHash = crypto.createHash('sha256').update(
+    Buffer.from(b64urldecode(attestationResponse.clientDataJSON), "base64"),
+  ).digest();
 
   // Prepare arguments to pass to the relevant verification method
   const verifierOpts: AttestationFormatVerifierOpts = {
@@ -235,48 +193,24 @@ export async function verifyRegistrationResponse(
     attStmt,
     authData,
     clientDataHash,
-    credentialID,
+    credentialID: Buffer.from(credentialID),
     credentialPublicKey,
-    rootCertificates,
-    rpIdHash,
+    rpIdHash: Buffer.from(rpIdHash),
   };
 
-  /**
-   * Verification can only be performed when attestation = 'direct'
-   */
-  let verified = false;
-  if (fmt === 'fido-u2f') {
-    verified = await verifyAttestationFIDOU2F(verifierOpts);
-  } else if (fmt === 'packed') {
-    verified = await verifyAttestationPacked(verifierOpts);
-  } else if (fmt === 'android-safetynet') {
-    verified = await verifyAttestationAndroidSafetyNet(verifierOpts);
-  } else if (fmt === 'android-key') {
-    verified = await verifyAttestationAndroidKey(verifierOpts);
-  } else if (fmt === 'tpm') {
-    verified = await verifyAttestationTPM(verifierOpts);
-  } else if (fmt === 'apple') {
-    verified = await verifyAttestationApple(verifierOpts);
-  } else if (fmt === 'none') {
-    if (attStmt.size > 0) {
-      throw new Error('None attestation had unexpected attestation statement');
-    }
-    // This is the weaker of the attestations, so there's nothing else to really check
-    verified = true;
-  } else {
+  if (fmt !== 'fido-u2f') {
     throw new Error(`Unsupported Attestation Format: ${fmt}`);
   }
+  const verified = await verifyAttestationFIDOU2F(verifierOpts);
+  if (!verified) return {verified: false};
 
-  const toReturn: VerifiedRegistrationResponse = {
-    verified,
-  };
+  const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(
+    flags,
+  );
 
-  if (toReturn.verified) {
-    const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(
-      flags,
-    );
-
-    toReturn.registrationInfo = {
+  return {
+    verified: true,
+    registrationInfo: {
       fmt,
       counter,
       aaguid: convertAAGUIDToString(aaguid),
@@ -290,10 +224,8 @@ export async function verifyRegistrationResponse(
       origin: clientDataJSON.origin,
       rpID: matchedRPID,
       authenticatorExtensionResults: extensionsData,
-    };
-  }
-
-  return toReturn;
+    },
+  };
 }
 
 /**
@@ -348,10 +280,9 @@ export type AttestationFormatVerifierOpts = {
   aaguid: Uint8Array;
   attStmt: AttestationStatement;
   authData: Uint8Array;
-  clientDataHash: Uint8Array;
-  credentialID: Uint8Array;
+  clientDataHash: Buffer;
+  credentialID: Buffer;
   credentialPublicKey: Uint8Array;
-  rootCertificates: string[];
-  rpIdHash: Uint8Array;
+  rpIdHash: Buffer;
   verifyTimestampMS?: boolean;
 };

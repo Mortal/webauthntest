@@ -1,15 +1,14 @@
+import { b64urlencode } from '../../shared.ts';
 import type {
   AuthenticationExtensionsClientInputs,
   PublicKeyCredentialDescriptorFuture,
   PublicKeyCredentialRequestOptionsJSON,
   UserVerificationRequirement,
 } from '../deps.ts';
-import { isoBase64URL, isoUint8Array } from '../helpers/iso/index.ts';
-import { generateChallenge } from '../helpers/generateChallenge.ts';
 
 export type GenerateAuthenticationOptionsOpts = {
   allowCredentials?: PublicKeyCredentialDescriptorFuture[];
-  challenge?: string | Uint8Array;
+  challenge: string;
   timeout?: number;
   userVerification?: UserVerificationRequirement;
   extensions?: AuthenticationExtensionsClientInputs;
@@ -30,30 +29,22 @@ export type GenerateAuthenticationOptionsOpts = {
  * @param rpID Valid domain name (after `https://`)
  */
 export async function generateAuthenticationOptions(
-  options: GenerateAuthenticationOptionsOpts = {},
+  options: GenerateAuthenticationOptionsOpts,
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
   const {
     allowCredentials,
-    challenge = await generateChallenge(),
+    challenge,
     timeout = 60000,
     userVerification = 'preferred',
     extensions,
     rpID,
   } = options;
 
-  /**
-   * Preserve ability to specify `string` values for challenges
-   */
-  let _challenge = challenge;
-  if (typeof _challenge === 'string') {
-    _challenge = isoUint8Array.fromUTF8String(_challenge);
-  }
-
   return {
-    challenge: isoBase64URL.fromBuffer(_challenge),
+    challenge,
     allowCredentials: allowCredentials?.map((cred) => ({
       ...cred,
-      id: isoBase64URL.fromBuffer(cred.id as Uint8Array),
+      id: b64urlencode(Buffer.from(cred.id as Uint8Array).toString("base64")),
     })),
     timeout,
     userVerification,

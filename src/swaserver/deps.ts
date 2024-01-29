@@ -15,19 +15,19 @@ export type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
   UserVerificationRequirement,
-} from '../../types/src/index.ts';
+} from '../swatypes/index.ts';
 
 // cbor (a.k.a. cbor-x in Node land)
-export * as cborx from 'https://deno.land/x/cbor@v1.5.2/encode.js';
+export * as cborx from 'cbor-x';
 
 // b64 (a.k.a. @hexagon/base64 in Node land)
-export { default as base64 } from 'https://deno.land/x/b64@1.1.27/src/base64.js';
+// export { default as base64 } from '@hexagon/base64';
 
 // cross-fetch
-export { fetch as crossFetch } from 'https://esm.sh/cross-fetch@4.0.0';
+// export { fetch as crossFetch } from 'https://esm.sh/cross-fetch@4.0.0';
 
 // @peculiar libraries
-export { AsnParser, AsnSerializer } from 'https://esm.sh/@peculiar/asn1-schema@2.3.8';
+export { AsnParser, AsnSerializer } from '@peculiar/asn1-schema';
 export {
   AuthorityKeyIdentifier,
   BasicConstraints,
@@ -44,13 +44,11 @@ export {
   Name,
   SubjectAlternativeName,
   SubjectKeyIdentifier,
-} from 'https://esm.sh/@peculiar/asn1-x509@2.3.8';
+} from '@peculiar/asn1-x509';
 export {
   ECDSASigValue,
   ECParameters,
   id_ecPublicKey,
   id_secp256r1,
   id_secp384r1,
-} from 'https://esm.sh/@peculiar/asn1-ecc@2.3.8';
-export { RSAPublicKey } from 'https://esm.sh/@peculiar/asn1-rsa@2.3.8';
-export { id_ce_keyDescription, KeyDescription } from 'https://esm.sh/@peculiar/asn1-android@2.3.10';
+} from '@peculiar/asn1-ecc';

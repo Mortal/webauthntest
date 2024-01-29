@@ -2,7 +2,7 @@ import {
   AuthenticationExtensionsAuthenticatorOutputs,
   decodeAuthenticatorExtensions,
 } from './decodeAuthenticatorExtensions.ts';
-import { isoCBOR, isoUint8Array } from './iso/index.ts';
+import { isoCBOR } from './iso/index.ts';
 import { COSEPublicKey } from './cose.ts';
 
 /**
@@ -18,7 +18,7 @@ export function parseAuthenticatorData(
   }
 
   let pointer = 0;
-  const dataView = isoUint8Array.toDataView(authData);
+  const dataView = new DataView(authData.buffer, authData.byteOffset, authData.length);
 
   const rpIdHash = authData.slice(pointer, pointer += 32);
 
@@ -63,10 +63,10 @@ export function parseAuthenticatorData(
      * in the hex below looks so odd.
      */
     // Bytes decode to `{ 1: "OKP", 3: -8, -1: "Ed25519" }` (it's missing key -2 a.k.a. COSEKEYS.x)
-    const badEdDSACBOR = isoUint8Array.fromHex('a301634f4b500327206745643235353139');
+    const badEdDSACBOR = new Uint8Array(Buffer.from('a301634f4b500327206745643235353139', 'hex'));
     const bytesAtCurrentPosition = authData.slice(pointer, pointer + badEdDSACBOR.byteLength);
     let foundBadCBOR = false;
-    if (isoUint8Array.areEqual(badEdDSACBOR, bytesAtCurrentPosition)) {
+    if (badEdDSACBOR.length === bytesAtCurrentPosition.length && badEdDSACBOR.every((v, i) => bytesAtCurrentPosition[i] === v)) {
       // Change the bad CBOR 0xa3 to 0xa4 so that the credential public key can be recognized
       foundBadCBOR = true;
       authData[pointer] = 0xa4;
@@ -103,7 +103,7 @@ export function parseAuthenticatorData(
     throw new Error('Leftover bytes detected while parsing authenticator data');
   }
 
-  return _parseAuthenticatorDataInternals.stubThis({
+  return {
     rpIdHash,
     flagsBuf,
     flags,
@@ -114,7 +114,7 @@ export function parseAuthenticatorData(
     credentialPublicKey,
     extensionsData,
     extensionsDataBuffer,
-  });
+  };
 }
 
 export type ParsedAuthenticatorData = {
@@ -136,9 +136,4 @@ export type ParsedAuthenticatorData = {
   credentialPublicKey?: Uint8Array;
   extensionsData?: AuthenticationExtensionsAuthenticatorOutputs;
   extensionsDataBuffer?: Uint8Array;
-};
-
-// Make it possible to stub the return value during testing
-export const _parseAuthenticatorDataInternals = {
-  stubThis: (value: ParsedAuthenticatorData) => value,
 };

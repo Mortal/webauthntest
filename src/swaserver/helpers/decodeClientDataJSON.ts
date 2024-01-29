@@ -1,13 +1,13 @@
-import { isoBase64URL } from './iso/index.ts';
+import { b64urldecode } from "../../shared.ts";
 
 /**
  * Decode an authenticator's base64url-encoded clientDataJSON to JSON
  */
 export function decodeClientDataJSON(data: string): ClientDataJSON {
-  const toString = isoBase64URL.toString(data);
+  const toString = Buffer.from(b64urldecode(data), "base64").toString("utf-8");
   const clientData: ClientDataJSON = JSON.parse(toString);
 
-  return _decodeClientDataJSONInternals.stubThis(clientData);
+  return clientData;
 }
 
 export type ClientDataJSON = {
@@ -19,9 +19,4 @@ export type ClientDataJSON = {
     id?: string;
     status: 'present' | 'supported' | 'not-supported';
   };
-};
-
-// Make it possible to stub the return value during testing
-export const _decodeClientDataJSONInternals = {
-  stubThis: (value: ClientDataJSON) => value,
 };

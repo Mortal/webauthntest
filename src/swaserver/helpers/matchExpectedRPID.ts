@@ -1,51 +1,28 @@
-import { toHash } from './toHash.ts';
-import { isoUint8Array } from './iso/index.ts';
+import crypto from 'crypto';
+
+const bufferEqual = (a: Buffer, b: Buffer) => {
+	if (a.length !== b.length) return false;
+	let ineq = 0;
+	for (let i = 0; i < a.length; ++i)
+		if (a[i] !== b[i])
+			++ineq;
+	return ineq === 0;
+};
 
 /**
  * Go through each expected RP ID and try to find one that matches. Returns the unhashed RP ID
  * that matched the hash in the response.
- *
- * Raises an `UnexpectedRPIDHash` error if no match is found
  */
-export async function matchExpectedRPID(
-  rpIDHash: Uint8Array,
+export function matchExpectedRPID(
+  rpIDHash: Buffer,
   expectedRPIDs: string[],
-): Promise<string> {
-  try {
-    const matchedRPID = await Promise.any<string>(
-      expectedRPIDs.map((expected) => {
-        return new Promise((resolve, reject) => {
-          toHash(isoUint8Array.fromASCIIString(expected)).then(
-            (expectedRPIDHash) => {
-              if (isoUint8Array.areEqual(rpIDHash, expectedRPIDHash)) {
-                resolve(expected);
-              } else {
-                reject();
-              }
-            },
-          );
-        });
-      }),
-    );
-
-    return matchedRPID;
-  } catch (err) {
-    const _err = err as Error;
-
-    // This means no matches were found
-    if (_err.name === 'AggregateError') {
-      throw new UnexpectedRPIDHash();
+): string | null {
+  let result: string | null = null;
+  for (const expected of expectedRPIDs) {
+    const expectedRPIDHash = crypto.createHash('sha256').update(expected, 'utf8').digest();
+    if (bufferEqual(rpIDHash, expectedRPIDHash)) {
+      result = expected;
     }
-
-    // An unexpected error occurred
-    throw err;
   }
-}
-
-class UnexpectedRPIDHash extends Error {
-  constructor() {
-    const message = 'Unexpected RP ID hash';
-    super(message);
-    this.name = 'UnexpectedRPIDHash';
-  }
+  return result;
 }

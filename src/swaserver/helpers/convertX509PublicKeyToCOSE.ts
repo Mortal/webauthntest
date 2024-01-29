@@ -5,23 +5,18 @@ import {
   id_ecPublicKey,
   id_secp256r1,
   id_secp384r1,
-  RSAPublicKey,
 } from '../deps.ts';
 import {
   COSECRV,
   COSEKEYS,
   COSEKTY,
-  COSEPublicKey,
   COSEPublicKeyEC2,
-  COSEPublicKeyRSA,
 } from './cose.ts';
 import { mapX509SignatureAlgToCOSEAlg } from './mapX509SignatureAlgToCOSEAlg.ts';
 
 export function convertX509PublicKeyToCOSE(
   x509Certificate: Uint8Array,
-): COSEPublicKey {
-  let cosePublicKey: COSEPublicKey = new Map();
-
+): COSEPublicKeyEC2 {
   /**
    * Time to extract the public key from an X.509 certificate
    */
@@ -87,31 +82,9 @@ export function convertX509PublicKeyToCOSE(
     coseEC2PubKey.set(COSEKEYS.x, x);
     coseEC2PubKey.set(COSEKEYS.y, y);
 
-    cosePublicKey = coseEC2PubKey;
-  } else if (publicKeyAlgorithmID === '1.2.840.113549.1.1.1') {
-    /**
-     * RSA public key
-     */
-    const rsaPublicKey = AsnParser.parse(
-      subjectPublicKeyInfo.subjectPublicKey,
-      RSAPublicKey,
-    );
-
-    const coseRSAPubKey: COSEPublicKeyRSA = new Map();
-    coseRSAPubKey.set(COSEKEYS.kty, COSEKTY.RSA);
-    coseRSAPubKey.set(
-      COSEKEYS.alg,
-      mapX509SignatureAlgToCOSEAlg(signatureAlgorithm),
-    );
-    coseRSAPubKey.set(COSEKEYS.n, new Uint8Array(rsaPublicKey.modulus));
-    coseRSAPubKey.set(COSEKEYS.e, new Uint8Array(rsaPublicKey.publicExponent));
-
-    cosePublicKey = coseRSAPubKey;
-  } else {
-    throw new Error(
-      `Certificate public key contained unexpected algorithm ID ${publicKeyAlgorithmID}`,
-    );
+    return coseEC2PubKey;
   }
-
-  return cosePublicKey;
+  throw new Error(
+    `Certificate public key contained unexpected algorithm ID ${publicKeyAlgorithmID}`,
+  );
 }

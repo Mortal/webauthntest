@@ -1,12 +1,11 @@
 import { AsnParser, ECDSASigValue } from '../../../deps.ts';
-import { isoUint8Array } from '../index.ts';
 
 /**
  * In WebAuthn, EC2 signatures are wrapped in ASN.1 structure so we need to peel r and s apart.
  *
  * See https://www.w3.org/TR/webauthn-2/#sctn-signature-attestation-types
  */
-export function unwrapEC2Signature(signature: Uint8Array): Uint8Array {
+export function unwrapEC2Signature(signature: Uint8Array) {
   const parsedSignature = AsnParser.parse(signature, ECDSASigValue);
   let rBytes = new Uint8Array(parsedSignature.r);
   let sBytes = new Uint8Array(parsedSignature.s);
@@ -19,9 +18,7 @@ export function unwrapEC2Signature(signature: Uint8Array): Uint8Array {
     sBytes = sBytes.slice(1);
   }
 
-  const finalSignature = isoUint8Array.concat([rBytes, sBytes]);
-
-  return finalSignature;
+  return Buffer.concat([Buffer.from(rBytes), Buffer.from(sBytes)]);
 }
 
 /**

@@ -12,20 +12,10 @@ import express from 'express';
 import { b64urlencode, b64urldecode } from './shared.ts';
 import * as types from './types.ts';
 
-import { 
-    // Registration 
-    // generateRegistrationOptions, 
-    verifyRegistrationResponse,
-	// GenerateRegistrationOptionsOpts,
-	VerifyRegistrationResponseOpts,
-	// VerifiedRegistrationResponse,
-    // Authentication 
-    generateAuthenticationOptions,
-	GenerateAuthenticationOptionsOpts,
-	verifyAuthenticationResponse,
-	VerifyAuthenticationResponseOpts, 
-} from '@simplewebauthn/server';
-import { AuthenticationResponseJSON } from '@simplewebauthn/types';
+import { AuthenticationResponseJSON } from './swatypes/index.ts';
+import { GenerateAuthenticationOptionsOpts, generateAuthenticationOptions } from './swaserver/authentication/generateAuthenticationOptions.ts';
+import { VerifyAuthenticationResponseOpts, verifyAuthenticationResponse } from './swaserver/authentication/verifyAuthenticationResponse.ts';
+import { VerifyRegistrationResponseOpts, verifyRegistrationResponse } from './swaserver/registration/verifyRegistrationResponse.ts';
 
 // const subtle = crypto.subtle;
 
@@ -210,9 +200,9 @@ const routeRp = () => {
 
 		const opts: VerifyRegistrationResponseOpts = {
 			response: attResponse,
-			expectedChallenge: `${expectedChallenge}`,
-			expectedOrigin: "https://localhost:5173",  // or 4433?
-			expectedRPID: "localhost",
+			expectedChallenge: [`${expectedChallenge}`],
+			expectedOrigin: ["https://localhost:5173", "https://localhost:4433"],  // or 4433?
+			expectedRPID: ["localhost"],
 			requireUserVerification: false,
 			supportedAlgorithmIDs: [-7]
 		};
@@ -415,7 +405,7 @@ const routeRp = () => {
 			return;
 		}
 		// const credentialId: string = b64urlencode(Buffer.from(user.credentialID).toString("base64"));
-		// const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
+		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
         const opts: GenerateAuthenticationOptionsOpts = {
             timeout: 60000,
             allowCredentials: [user].map(authenticator => ({
@@ -423,6 +413,7 @@ const routeRp = () => {
                 type: 'public-key',
                 transports: authenticator.transports,
             })),
+			challenge,
             // userVerification: 'discouraged',
             rpID: "localhost",
             // extensions: {
@@ -432,8 +423,6 @@ const routeRp = () => {
         };
 
         const response = await generateAuthenticationOptions(opts);
-
-        const challenge = response.challenge;
 
 		authChallenges[challenge] = userId;
 		// const response: types.AuthChallengeResponse = {
@@ -457,7 +446,7 @@ const routeRp = () => {
 		const {userId, challenge, response: body} = req.body as {userId: string, challenge: string, response: AuthenticationResponseJSON};
 		console.log(body);
 		if (authChallenges[challenge] !== userId) {
-			console.log({body, expected: authChallenges[challenge]});
+			console.log({body, expected: authChallenges[challenge], challenge, authChallenges});
 			res.json({"error": "Unknown challenge"});
 			return;
 		}

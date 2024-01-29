@@ -17,15 +17,6 @@ export type COSEPublicKey = {
   set(key: COSEKEYS.alg, value: COSEALG): void;
 };
 
-export type COSEPublicKeyOKP = COSEPublicKey & {
-  // Getters
-  get(key: COSEKEYS.crv): number | undefined;
-  get(key: COSEKEYS.x): Uint8Array | undefined;
-  // Setters
-  set(key: COSEKEYS.crv, value: number): void;
-  set(key: COSEKEYS.x, value: Uint8Array): void;
-};
-
 export type COSEPublicKeyEC2 = COSEPublicKey & {
   // Getters
   get(key: COSEKEYS.crv): number | undefined;
@@ -37,34 +28,11 @@ export type COSEPublicKeyEC2 = COSEPublicKey & {
   set(key: COSEKEYS.y, value: Uint8Array): void;
 };
 
-export type COSEPublicKeyRSA = COSEPublicKey & {
-  // Getters
-  get(key: COSEKEYS.n): Uint8Array | undefined;
-  get(key: COSEKEYS.e): Uint8Array | undefined;
-  // Setters
-  set(key: COSEKEYS.n, value: Uint8Array): void;
-  set(key: COSEKEYS.e, value: Uint8Array): void;
-};
-
-export function isCOSEPublicKeyOKP(
-  cosePublicKey: COSEPublicKey,
-): cosePublicKey is COSEPublicKeyOKP {
-  const kty = cosePublicKey.get(COSEKEYS.kty);
-  return isCOSEKty(kty) && kty === COSEKTY.OKP;
-}
-
 export function isCOSEPublicKeyEC2(
   cosePublicKey: COSEPublicKey,
 ): cosePublicKey is COSEPublicKeyEC2 {
   const kty = cosePublicKey.get(COSEKEYS.kty);
-  return isCOSEKty(kty) && kty === COSEKTY.EC2;
-}
-
-export function isCOSEPublicKeyRSA(
-  cosePublicKey: COSEPublicKey,
-): cosePublicKey is COSEPublicKeyRSA {
-  const kty = cosePublicKey.get(COSEKEYS.kty);
-  return isCOSEKty(kty) && kty === COSEKTY.RSA;
+  return kty === 2;
 }
 
 /**

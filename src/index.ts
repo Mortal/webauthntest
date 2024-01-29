@@ -1,8 +1,8 @@
 import './style.css';
 // import { b64urlencode, b64urldecode } from './shared';
-import type * as types from './types';
-import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
-import { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/types';
+// import type * as types from './types';
+import { startAuthentication, startRegistration } from './swabrowser';
+import { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from './swatypes';
 
 async function b64decode(a: string): Promise<ArrayBuffer> {
 	return await (await fetch("data:application/octet-stream;base64," + a)).arrayBuffer();

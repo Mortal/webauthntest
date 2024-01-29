@@ -1,3 +1,4 @@
+import { b64urlencode } from '../../shared.ts';
 import type {
   AttestationConveyancePreference,
   AuthenticationExtensionsClientInputs,
@@ -7,15 +8,13 @@ import type {
   PublicKeyCredentialDescriptorFuture,
   PublicKeyCredentialParameters,
 } from '../deps.ts';
-import { generateChallenge } from '../helpers/generateChallenge.ts';
-import { isoBase64URL, isoUint8Array } from '../helpers/iso/index.ts';
 
 export type GenerateRegistrationOptionsOpts = {
   rpName: string;
   rpID: string;
   userID: string;
   userName: string;
-  challenge?: string | Uint8Array;
+  challenge: string;
   userDisplayName?: string;
   timeout?: number;
   attestationType?: AttestationConveyancePreference;
@@ -102,7 +101,7 @@ export async function generateRegistrationOptions(
     rpID,
     userID,
     userName,
-    challenge = await generateChallenge(),
+    challenge,
     userDisplayName = userName,
     timeout = 60000,
     attestationType = 'none',
@@ -152,16 +151,8 @@ export async function generateRegistrationOptions(
     authenticatorSelection.requireResidentKey = authenticatorSelection.residentKey === 'required';
   }
 
-  /**
-   * Preserve ability to specify `string` values for challenges
-   */
-  let _challenge = challenge;
-  if (typeof _challenge === 'string') {
-    _challenge = isoUint8Array.fromUTF8String(_challenge);
-  }
-
   return {
-    challenge: isoBase64URL.fromBuffer(_challenge),
+    challenge,
     rp: {
       name: rpName,
       id: rpID,
@@ -176,7 +167,7 @@ export async function generateRegistrationOptions(
     attestation: attestationType,
     excludeCredentials: excludeCredentials.map((cred) => ({
       ...cred,
-      id: isoBase64URL.fromBuffer(cred.id as Uint8Array),
+      id: b64urlencode(Buffer.from(cred.id as Uint8Array).toString("base64")),
     })),
     authenticatorSelection,
     extensions: {

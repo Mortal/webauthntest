@@ -3,7 +3,7 @@ import {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationCredential,
   RegistrationResponseJSON,
-} from '@simplewebauthn/types';
+} from '../../swatypes';
 
 import { utf8StringToBuffer } from '../helpers/utf8StringToBuffer';
 import { bufferToBase64URLString } from '../helpers/bufferToBase64URLString';
@@ -40,7 +40,7 @@ export async function startRegistration(
   const { id, rawId, response, type } = credential;
 
   // Continue to play it safe with `getTransports()` for now, even when L3 types say it's required
-  const transports: AuthenticatorTransportFuture[] | undefined = undefined;
+  let transports: AuthenticatorTransportFuture[] | undefined = undefined;
   if (typeof response.getTransports === 'function') {
     transports = response.getTransports();
   }

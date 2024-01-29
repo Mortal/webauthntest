@@ -1,3 +1,5 @@
+import { webcrypto } from 'crypto';
+
 import type {
   AuthenticationResponseJSON,
   AuthenticatorDevice,
@@ -5,13 +7,14 @@ import type {
   UserVerificationRequirement,
 } from '../deps.ts';
 import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
-import { toHash } from '../helpers/toHash.ts';
-import { verifySignature } from '../helpers/verifySignature.ts';
+import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
 import { parseAuthenticatorData } from '../helpers/parseAuthenticatorData.ts';
 import { parseBackupFlags } from '../helpers/parseBackupFlags.ts';
 import { AuthenticationExtensionsAuthenticatorOutputs } from '../helpers/decodeAuthenticatorExtensions.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
-import { isoBase64URL, isoUint8Array } from '../helpers/iso/index.ts';
+import { verifyEC2 } from '../helpers/iso/isoCrypto/verifyEC2.ts';
+import { unwrapEC2Signature } from '../helpers/iso/isoCrypto/unwrapEC2Signature.ts';
+import { b64urldecode } from '../../shared.ts';
 
 export type VerifyAuthenticationResponseOpts = {
   response: AuthenticationResponseJSON;
@@ -133,16 +136,6 @@ export async function verifyAuthenticationResponse(
     }
   }
 
-  if (!isoBase64URL.isBase64url(assertionResponse.authenticatorData)) {
-    throw new Error(
-      'Credential response authenticatorData was not a base64url string',
-    );
-  }
-
-  if (!isoBase64URL.isBase64url(assertionResponse.signature)) {
-    throw new Error('Credential response signature was not a base64url string');
-  }
-
   if (
     assertionResponse.userHandle &&
     typeof assertionResponse.userHandle !== 'string'
@@ -162,8 +155,8 @@ export async function verifyAuthenticationResponse(
     }
   }
 
-  const authDataBuffer = isoBase64URL.toBuffer(
-    assertionResponse.authenticatorData,
+  const authDataBuffer = new Uint8Array(
+    Buffer.from(b64urldecode(assertionResponse.authenticatorData), "base64")
   );
   const parsedAuthData = parseAuthenticatorData(authDataBuffer);
   const { rpIdHash, flags, counter, extensionsData } = parsedAuthData;
@@ -176,7 +169,8 @@ export async function verifyAuthenticationResponse(
     expectedRPIDs = expectedRPID;
   }
 
-  const matchedRPID = await matchExpectedRPID(rpIdHash, expectedRPIDs);
+  const matchedRPID = matchExpectedRPID(Buffer.from(rpIdHash), expectedRPIDs);
+  if (matchedRPID == null) throw new Error("Unexpected RPID");
 
   if (advancedFIDOConfig !== undefined) {
     const { userVerification: fidoUserVerification } = advancedFIDOConfig;
@@ -213,13 +207,15 @@ export async function verifyAuthenticationResponse(
       );
     }
   }
-
-  const clientDataHash = await toHash(
-    isoBase64URL.toBuffer(assertionResponse.clientDataJSON),
+  const clientDataHash = new Uint8Array(
+    await webcrypto.subtle.digest(
+      "SHA-256",
+      Buffer.from(b64urldecode(assertionResponse.clientDataJSON), "base64")
+    )
   );
-  const signatureBase = isoUint8Array.concat([authDataBuffer, clientDataHash]);
+  const signatureBase = Buffer.concat([Buffer.from(authDataBuffer), Buffer.from(clientDataHash)]);
 
-  const signature = isoBase64URL.toBuffer(assertionResponse.signature);
+  const signature = Buffer.from(b64urldecode(assertionResponse.signature), "base64")
 
   if (
     (counter > 0 || authenticator.counter > 0) &&
@@ -236,12 +232,15 @@ export async function verifyAuthenticationResponse(
 
   const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(flags);
 
+  const cosePublicKey = decodeCredentialPublicKey(authenticator.credentialPublicKey);
+  const unwrappedSignature = unwrapEC2Signature(signature);
+  const verified = await verifyEC2({
+    cosePublicKey,
+    signature: unwrappedSignature,
+    data: signatureBase,
+  });
   const toReturn: VerifiedAuthenticationResponse = {
-    verified: await verifySignature({
-      signature,
-      data: signatureBase,
-      credentialPublicKey: authenticator.credentialPublicKey,
-    }),
+    verified,
     authenticationInfo: {
       newCounter: counter,
       credentialID: authenticator.credentialID,

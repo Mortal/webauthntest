@@ -1,22 +1,20 @@
+import { webcrypto } from 'crypto';
+
 import { COSEALG, COSECRV, COSEKEYS, COSEPublicKeyEC2 } from '../../cose.ts';
 import { mapCoseAlgToWebCryptoAlg } from './mapCoseAlgToWebCryptoAlg.ts';
-import { importKey } from './importKey.ts';
-import { isoBase64URL } from '../index.ts';
 import { SubtleCryptoCrv } from './structs.ts';
-import { getWebCrypto } from './getWebCrypto.ts';
+import { b64urlencode } from '../../../../shared.ts';
 
 /**
  * Verify a signature using an EC2 public key
  */
 export async function verifyEC2(opts: {
   cosePublicKey: COSEPublicKeyEC2;
-  signature: Uint8Array;
-  data: Uint8Array;
+  signature: Buffer;
+  data: Buffer;
   shaHashOverride?: COSEALG;
 }): Promise<boolean> {
   const { cosePublicKey, signature, data, shaHashOverride } = opts;
-
-  const WebCrypto = await getWebCrypto();
 
   // Import the public key
   const alg = cosePublicKey.get(COSEKEYS.alg);
@@ -54,8 +52,8 @@ export async function verifyEC2(opts: {
   const keyData: JsonWebKey = {
     kty: 'EC',
     crv: _crv,
-    x: isoBase64URL.fromBuffer(x),
-    y: isoBase64URL.fromBuffer(y),
+    x: b64urlencode(Buffer.from(x).toString("base64")),
+    y: b64urlencode(Buffer.from(y).toString("base64")),
     ext: false,
   };
 
@@ -70,10 +68,9 @@ export async function verifyEC2(opts: {
     namedCurve: _crv,
   };
 
-  const key = await importKey({
-    keyData,
-    algorithm: keyAlgorithm,
-  });
+  const key = await webcrypto.subtle.importKey('jwk', keyData, keyAlgorithm, false, [
+    'verify',
+  ]);
 
   // Determine which SHA algorithm to use for signature verification
   let subtleAlg = mapCoseAlgToWebCryptoAlg(alg);
@@ -86,5 +83,5 @@ export async function verifyEC2(opts: {
     hash: { name: subtleAlg },
   };
 
-  return WebCrypto.subtle.verify(verifyAlgorithm, key, signature, data);
+  return webcrypto.subtle.verify(verifyAlgorithm, key, signature, data);
 }
