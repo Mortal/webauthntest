@@ -3,14 +3,12 @@ import type {
   AuthenticationExtensionsClientInputs,
   PublicKeyCredentialDescriptorFuture,
   PublicKeyCredentialRequestOptionsJSON,
-  UserVerificationRequirement,
-} from '../deps.ts';
+} from '../../swatypes/index.ts';
 
 export type GenerateAuthenticationOptionsOpts = {
   allowCredentials?: PublicKeyCredentialDescriptorFuture[];
   challenge: string;
   timeout?: number;
-  userVerification?: UserVerificationRequirement;
   extensions?: AuthenticationExtensionsClientInputs;
   rpID?: string;
 };
@@ -35,7 +33,6 @@ export async function generateAuthenticationOptions(
     allowCredentials,
     challenge,
     timeout = 60000,
-    userVerification = 'preferred',
     extensions,
     rpID,
   } = options;
@@ -47,7 +44,7 @@ export async function generateAuthenticationOptions(
       id: b64urlencode(Buffer.from(cred.id as Uint8Array).toString("base64")),
     })),
     timeout,
-    userVerification,
+    userVerification: "discouraged",
     extensions,
     rpId: rpID,
   };

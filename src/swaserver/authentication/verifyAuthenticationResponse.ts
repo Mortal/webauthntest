@@ -1,16 +1,11 @@
-import { webcrypto } from 'crypto';
+import crypto from 'crypto';
 
 import type {
   AuthenticationResponseJSON,
   AuthenticatorDevice,
-  CredentialDeviceType,
-  UserVerificationRequirement,
-} from '../deps.ts';
+} from '../../swatypes/index.ts';
 import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
 import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
-import { parseAuthenticatorData } from '../helpers/parseAuthenticatorData.ts';
-import { parseBackupFlags } from '../helpers/parseBackupFlags.ts';
-import { AuthenticationExtensionsAuthenticatorOutputs } from '../helpers/decodeAuthenticatorExtensions.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
 import { verifyEC2 } from '../helpers/iso/isoCrypto/verifyEC2.ts';
 import { unwrapEC2Signature } from '../helpers/iso/isoCrypto/unwrapEC2Signature.ts';
@@ -18,16 +13,60 @@ import { b64urldecode } from '../../shared.ts';
 
 export type VerifyAuthenticationResponseOpts = {
   response: AuthenticationResponseJSON;
-  expectedChallenge: string | ((challenge: string) => boolean | Promise<boolean>);
+  expectedChallenge: string;
   expectedOrigin: string | string[];
   expectedRPID: string | string[];
   expectedType?: string | string[];
   authenticator: AuthenticatorDevice;
-  requireUserVerification?: boolean;
-  advancedFIDOConfig?: {
-    userVerification?: UserVerificationRequirement;
-  };
 };
+
+/**
+ * Make sense of the authData buffer contained in an Attestation
+ */
+function parseAuthenticatorData(
+  authData: Buffer,
+) {
+  if (authData.byteLength < 37) {
+    throw new Error(
+      `Authenticator data was ${authData.byteLength} bytes, expected at least 37 bytes`,
+    );
+  }
+
+  const rpIdHash = authData.subarray(0, 32);
+  const flagsInt = authData.readUint8(32);
+
+  // Bit positions can be referenced here:
+  // https://www.w3.org/TR/webauthn-2/#flags
+  const flags = {
+    up: !!(flagsInt & (1 << 0)), // User Presence
+    uv: !!(flagsInt & (1 << 2)), // User Verified
+    be: !!(flagsInt & (1 << 3)), // Backup Eligibility
+    bs: !!(flagsInt & (1 << 4)), // Backup State
+    at: !!(flagsInt & (1 << 6)), // Attested Credential Data Present
+    ed: !!(flagsInt & (1 << 7)), // Extension Data Present
+  };
+
+  const counter = authData.readUInt32BE(33);
+  if (!flags.up) {
+    throw new Error("User was not present for authentication");
+  }
+  if (flags.at) {
+    throw new Error("Unexpected attested credential data present in authentication response");
+  }
+  if (flags.ed) {
+    throw new Error("Extension data not supported");
+  }
+
+  // Pointer should be at the end of the authenticator data, otherwise too much data was sent
+  if (authData.byteLength !== 37) {
+    throw new Error('Leftover bytes detected while parsing authenticator data');
+  }
+
+  return {
+    rpIdHash,
+    counter,
+  };
+}
 
 /**
  * Verify that the user has legitimately completed the login process
@@ -41,8 +80,6 @@ export type VerifyAuthenticationResponseOpts = {
  * @param expectedRPID RP ID (or array of IDs) that was specified in the registration options
  * @param expectedType (Optional) The response type expected ('webauthn.get')
  * @param authenticator An internal {@link AuthenticatorDevice} matching the credential's ID
- * @param requireUserVerification (Optional) Enforce user verification by the authenticator
- * (via PIN, fingerprint, etc...)
  * @param advancedFIDOConfig (Optional) Options for satisfying more stringent FIDO RP feature
  * requirements
  * @param advancedFIDOConfig.userVerification (Optional) Enable alternative rules for evaluating the
@@ -59,8 +96,6 @@ export async function verifyAuthenticationResponse(
     expectedRPID,
     expectedType,
     authenticator,
-    requireUserVerification = true,
-    advancedFIDOConfig,
   } = options;
   const { id, rawId, type: credentialType, response: assertionResponse } = response;
 
@@ -108,13 +143,7 @@ export async function verifyAuthenticationResponse(
   }
 
   // Ensure the device provided the challenge we gave it
-  if (typeof expectedChallenge === 'function') {
-    if (!(await expectedChallenge(challenge))) {
-      throw new Error(
-        `Custom challenge verifier returned false for registration response challenge "${challenge}"`,
-      );
-    }
-  } else if (challenge !== expectedChallenge) {
+  if (challenge !== expectedChallenge) {
     throw new Error(
       `Unexpected authentication response challenge "${challenge}", expected "${expectedChallenge}"`,
     );
@@ -155,11 +184,11 @@ export async function verifyAuthenticationResponse(
     }
   }
 
-  const authDataBuffer = new Uint8Array(
+  const authDataBuffer = (
     Buffer.from(b64urldecode(assertionResponse.authenticatorData), "base64")
   );
   const parsedAuthData = parseAuthenticatorData(authDataBuffer);
-  const { rpIdHash, flags, counter, extensionsData } = parsedAuthData;
+  const { rpIdHash, counter } = parsedAuthData;
 
   // Make sure the response's RP ID is ours
   let expectedRPIDs: string[] = [];
@@ -172,65 +201,12 @@ export async function verifyAuthenticationResponse(
   const matchedRPID = matchExpectedRPID(Buffer.from(rpIdHash), expectedRPIDs);
   if (matchedRPID == null) throw new Error("Unexpected RPID");
 
-  if (advancedFIDOConfig !== undefined) {
-    const { userVerification: fidoUserVerification } = advancedFIDOConfig;
-
-    /**
-     * Use FIDO Conformance-defined rules for verifying UP and UV flags
-     */
-    if (fidoUserVerification === 'required') {
-      // Require `flags.uv` be true (implies `flags.up` is true)
-      if (!flags.uv) {
-        throw new Error(
-          'User verification required, but user could not be verified',
-        );
-      }
-    } else if (
-      fidoUserVerification === 'preferred' ||
-      fidoUserVerification === 'discouraged'
-    ) {
-      // Ignore `flags.uv`
-    }
-  } else {
-    /**
-     * Use WebAuthn spec-defined rules for verifying UP and UV flags
-     */
-    // WebAuthn only requires the user presence flag be true
-    if (!flags.up) {
-      throw new Error('User not present during authentication');
-    }
-
-    // Enforce user verification if required
-    if (requireUserVerification && !flags.uv) {
-      throw new Error(
-        'User verification required, but user could not be verified',
-      );
-    }
-  }
-  const clientDataHash = new Uint8Array(
-    await webcrypto.subtle.digest(
-      "SHA-256",
-      Buffer.from(b64urldecode(assertionResponse.clientDataJSON), "base64")
-    )
-  );
-  const signatureBase = Buffer.concat([Buffer.from(authDataBuffer), Buffer.from(clientDataHash)]);
+	const clientDataHash = crypto.createHash('sha256').update(
+    Buffer.from(b64urldecode(assertionResponse.clientDataJSON), "base64")
+  ).digest();
+  const signatureBase = Buffer.concat([(authDataBuffer), Buffer.from(clientDataHash)]);
 
   const signature = Buffer.from(b64urldecode(assertionResponse.signature), "base64")
-
-  if (
-    (counter > 0 || authenticator.counter > 0) &&
-    counter <= authenticator.counter
-  ) {
-    // Error out when the counter in the DB is greater than or equal to the counter in the
-    // dataStruct. It's related to how the authenticator maintains the number of times its been
-    // used for this client. If this happens, then someone's somehow increased the counter
-    // on the device without going through this site
-    throw new Error(
-      `Response counter value ${counter} was lower than expected ${authenticator.counter}`,
-    );
-  }
-
-  const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(flags);
 
   const cosePublicKey = decodeCredentialPublicKey(authenticator.credentialPublicKey);
   const unwrappedSignature = unwrapEC2Signature(signature);
@@ -244,10 +220,6 @@ export async function verifyAuthenticationResponse(
     authenticationInfo: {
       newCounter: counter,
       credentialID: authenticator.credentialID,
-      userVerified: flags.uv,
-      credentialDeviceType,
-      credentialBackedUp,
-      authenticatorExtensionResults: extensionsData,
       origin: clientDataJSON.origin,
       rpID: matchedRPID,
     },
@@ -273,19 +245,13 @@ export async function verifyAuthenticationResponse(
  * reference!**
  * @param authenticationInfo.origin The origin of the website that the authentication occurred on
  * @param authenticationInfo.rpID The RP ID that the authentication occurred on
- * @param authenticationInfo?.authenticatorExtensionResults The authenticator extensions returned
- * by the browser
  */
 export type VerifiedAuthenticationResponse = {
   verified: boolean;
   authenticationInfo: {
     credentialID: Uint8Array;
     newCounter: number;
-    userVerified: boolean;
-    credentialDeviceType: CredentialDeviceType;
-    credentialBackedUp: boolean;
     origin: string;
     rpID: string;
-    authenticatorExtensionResults?: AuthenticationExtensionsAuthenticatorOutputs;
   };
 };

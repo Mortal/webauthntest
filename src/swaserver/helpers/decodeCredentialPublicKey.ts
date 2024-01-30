@@ -1,8 +1,8 @@
 import { COSEKEYS, COSEPublicKey, COSEPublicKeyEC2, isCOSEPublicKeyEC2 } from './cose.ts';
-import { isoCBOR } from './iso/index.ts';
+import * as isoCBOR from './iso/isoCBOR.ts';
 
 export function decodeCredentialPublicKey(
-  publicKey: Uint8Array,
+  publicKey: Buffer,
 ): COSEPublicKeyEC2 {
   const cosePublicKey = isoCBOR.decodeFirst<COSEPublicKey>(publicKey);
   if (!isCOSEPublicKeyEC2(cosePublicKey)) {

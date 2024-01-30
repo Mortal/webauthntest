@@ -1,4 +1,8 @@
-import { AsnParser, ECDSASigValue } from '../../../deps.ts';
+import { AsnParser } from '@peculiar/asn1-schema';
+import {
+  ECDSASigValue,
+} from '@peculiar/asn1-ecc';
+
 
 /**
  * In WebAuthn, EC2 signatures are wrapped in ASN.1 structure so we need to peel r and s apart.

@@ -7,7 +7,7 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialDescriptorFuture,
   PublicKeyCredentialParameters,
-} from '../deps.ts';
+} from '../../swatypes/index.ts';
 
 export type GenerateRegistrationOptionsOpts = {
   rpName: string;

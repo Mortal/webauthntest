@@ -2,22 +2,19 @@ import crypto from 'crypto';
 
 import type {
   COSEAlgorithmIdentifier,
-  CredentialDeviceType,
   RegistrationResponseJSON,
-} from '../deps.ts';
+} from '../../swatypes/index.ts';
 import {
   AttestationFormat,
   AttestationStatement,
   decodeAttestationObject,
 } from '../helpers/decodeAttestationObject.ts';
-import { AuthenticationExtensionsAuthenticatorOutputs } from '../helpers/decodeAuthenticatorExtensions.ts';
 import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
-import { parseAuthenticatorData } from '../helpers/parseAuthenticatorData.ts';
 import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
 import { COSEKEYS } from '../helpers/cose.ts';
-import { convertAAGUIDToString } from '../helpers/convertAAGUIDToString.ts';
-import { parseBackupFlags } from '../helpers/parseBackupFlags.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
+import * as isoCBOR from '../helpers/iso/isoCBOR.ts';
+import { COSEPublicKey } from '../helpers/cose.ts';
 
 import { supportedCOSEAlgorithmIdentifiers } from './generateRegistrationOptions.ts';
 import { verifyAttestationFIDOU2F } from './verifications/verifyAttestationFIDOU2F.ts';
@@ -28,9 +25,94 @@ export type VerifyRegistrationResponseOpts = {
   expectedChallenge: string[];
   expectedOrigin: string[];
   expectedRPID: string[];
-  requireUserVerification?: boolean;
   supportedAlgorithmIDs?: COSEAlgorithmIdentifier[];
 };
+
+/**
+ * Make sense of the authData buffer contained in an Attestation
+ */
+function parseAuthenticatorData(
+  authData: Buffer,
+) {
+  if (authData.byteLength < 37) {
+    throw new Error(
+      `Authenticator data was ${authData.byteLength} bytes, expected at least 37 bytes`,
+    );
+  }
+
+  const rpIdHash = authData.subarray(0, 32);
+  const flagsInt = authData.readUint8(32);
+
+  // Bit positions can be referenced here:
+  // https://www.w3.org/TR/webauthn-2/#flags
+  const flags = {
+    up: !!(flagsInt & (1 << 0)), // User Presence
+    uv: !!(flagsInt & (1 << 2)), // User Verified
+    be: !!(flagsInt & (1 << 3)), // Backup Eligibility
+    bs: !!(flagsInt & (1 << 4)), // Backup State
+    at: !!(flagsInt & (1 << 6)), // Attested Credential Data Present
+    ed: !!(flagsInt & (1 << 7)), // Extension Data Present
+    flagsInt,
+  };
+
+  const counterBuf = authData.subarray(33, 37);
+  const counter = authData.readUInt32BE(33);
+  if (!flags.at) {
+    throw new Error("No attested credential data present");
+  }
+  const aaguid = authData.subarray(37, 53);
+  const credIDLen = authData.readUInt16BE(53);
+  const credentialID = authData.subarray(55, 55 + credIDLen);
+
+  // Decode the next CBOR item in the buffer, then re-encode it back to a Buffer
+  const firstDecoded = isoCBOR.decodeFirst<COSEPublicKey>(
+    authData.subarray(55 + credIDLen),
+  );
+  const credentialPublicKey = Buffer.from(isoCBOR.encode(firstDecoded));
+
+  if (flags.ed) {
+    throw new Error("Extension data not supported");
+  }
+
+  // Pointer should be at the end of the authenticator data, otherwise too much data was sent
+  if (authData.byteLength !== 55 + credIDLen + credentialPublicKey.byteLength) {
+    throw new Error('Leftover bytes detected while parsing authenticator data');
+  }
+
+  // Make sure someone was physically present
+  if (!flags.up) {
+    throw new Error('User not present during registration');
+  }
+
+  return {
+    rpIdHash,
+    flags,
+    counter,
+    counterBuf,
+    aaguid,
+    credentialID,
+    credentialPublicKey,
+  };
+}
+
+/**
+ * Convert the aaguid buffer in authData into a UUID string
+ */
+function convertAAGUIDToString(aaguid: Uint8Array): string {
+  // Raw Hex: adce000235bcc60a648b0b25f1f05503
+  const hex = Buffer.from(aaguid).toString("hex");
+
+  const segments: string[] = [
+    hex.slice(0, 8), // 8
+    hex.slice(8, 12), // 4
+    hex.slice(12, 16), // 4
+    hex.slice(16, 20), // 4
+    hex.slice(20, 32), // 8
+  ];
+
+  // Formatted: adce0002-35bc-c60a-648b-0b25f1f05503
+  return segments.join('-');
+}
 
 /**
  * Verify that the user has legitimately completed the registration process
@@ -43,8 +125,6 @@ export type VerifyRegistrationResponseOpts = {
  * @param expectedOrigin Website URL (or array of URLs) that the registration should have occurred on
  * @param expectedRPID RP ID (or array of IDs) that was specified in the registration options
  * @param expectedType (Optional) The response type expected ('webauthn.create')
- * @param requireUserVerification (Optional) Enforce user verification by the authenticator
- * (via PIN, fingerprint, etc...)
  * @param supportedAlgorithmIDs Array of numeric COSE algorithm identifiers supported for
  * attestation by this RP. See https://www.iana.org/assignments/cose/cose.xhtml#algorithms
  */
@@ -56,7 +136,6 @@ export async function verifyRegistrationResponse(
     expectedChallenge,
     expectedOrigin,
     expectedRPID,
-    requireUserVerification = true,
     supportedAlgorithmIDs = supportedCOSEAlgorithmIdentifiers,
   } = options;
   const { id, rawId, type: credentialType, response: attestationResponse } = response;
@@ -133,40 +212,14 @@ export async function verifyRegistrationResponse(
   const {
     aaguid,
     rpIdHash,
-    flags,
     credentialID,
     counter,
     credentialPublicKey,
-    extensionsData,
   } = parsedAuthData;
 
   // Make sure the response's RP ID is ours
   let matchedRPID = matchExpectedRPID(Buffer.from(rpIdHash), expectedRPID);
   if (matchedRPID == null) throw new Error("Unexpected RPID");
-
-  // Make sure someone was physically present
-  if (!flags.up) {
-    throw new Error('User not present during registration');
-  }
-
-  // Enforce user verification if specified
-  if (requireUserVerification && !flags.uv) {
-    throw new Error(
-      'User verification required, but user could not be verified',
-    );
-  }
-
-  if (!credentialID) {
-    throw new Error('No credential ID was provided by authenticator');
-  }
-
-  if (!credentialPublicKey) {
-    throw new Error('No public key was provided by authenticator');
-  }
-
-  if (!aaguid) {
-    throw new Error('No AAGUID was present during registration');
-  }
 
   const decodedPublicKey = decodeCredentialPublicKey(credentialPublicKey);
   const alg = decodedPublicKey.get(COSEKEYS.alg);
@@ -204,10 +257,6 @@ export async function verifyRegistrationResponse(
   const verified = await verifyAttestationFIDOU2F(verifierOpts);
   if (!verified) return {verified: false};
 
-  const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(
-    flags,
-  );
-
   return {
     verified: true,
     registrationInfo: {
@@ -218,12 +267,8 @@ export async function verifyRegistrationResponse(
       credentialPublicKey,
       credentialType,
       attestationObject,
-      userVerified: flags.uv,
-      credentialDeviceType,
-      credentialBackedUp,
       origin: clientDataJSON.origin,
       rpID: matchedRPID,
-      authenticatorExtensionResults: extensionsData,
     },
   };
 }
@@ -251,8 +296,6 @@ export async function verifyRegistrationResponse(
  * @param registrationInfo.origin The origin of the website that the registration occurred on
  * @param registrationInfo?.rpID The RP ID that the registration occurred on, if one or more were
  * specified in the registration options
- * @param registrationInfo?.authenticatorExtensionResults The authenticator extensions returned
- * by the browser
  */
 export type VerifiedRegistrationResponse = {
   verified: boolean;
@@ -264,12 +307,8 @@ export type VerifiedRegistrationResponse = {
     credentialPublicKey: Uint8Array;
     credentialType: 'public-key';
     attestationObject: Uint8Array;
-    userVerified: boolean;
-    credentialDeviceType: CredentialDeviceType;
-    credentialBackedUp: boolean;
     origin: string;
     rpID?: string;
-    authenticatorExtensionResults?: AuthenticationExtensionsAuthenticatorOutputs;
   };
 };
 
@@ -277,12 +316,12 @@ export type VerifiedRegistrationResponse = {
  * Values passed to all attestation format verifiers, from which they are free to use as they please
  */
 export type AttestationFormatVerifierOpts = {
-  aaguid: Uint8Array;
+  aaguid: Buffer;
   attStmt: AttestationStatement;
-  authData: Uint8Array;
+  authData: Buffer;
   clientDataHash: Buffer;
   credentialID: Buffer;
-  credentialPublicKey: Uint8Array;
+  credentialPublicKey: Buffer;
   rpIdHash: Buffer;
   verifyTimestampMS?: boolean;
 };

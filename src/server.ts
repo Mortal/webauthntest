@@ -203,7 +203,6 @@ const routeRp = () => {
 			expectedChallenge: [`${expectedChallenge}`],
 			expectedOrigin: ["https://localhost:5173", "https://localhost:4433"],  // or 4433?
 			expectedRPID: ["localhost"],
-			requireUserVerification: false,
 			supportedAlgorithmIDs: [-7]
 		};
 		const verification = await verifyRegistrationResponse(opts);
@@ -471,7 +470,6 @@ const routeRp = () => {
 			expectedChallenge: challenge,
 			expectedOrigin: "https://localhost:5173",
 			expectedRPID: "localhost",
-			requireUserVerification: false,
 			authenticator: thisDevice,
 		};
 		const verification = await verifyAuthenticationResponse(opts);

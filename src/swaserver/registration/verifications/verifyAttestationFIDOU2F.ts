@@ -1,10 +1,29 @@
 import type { AttestationFormatVerifierOpts } from '../verifyRegistrationResponse.ts';
 
-import { convertCOSEtoPKCS } from '../../helpers/convertCOSEtoPKCS.ts';
 import { convertX509PublicKeyToCOSE } from '../../helpers/convertX509PublicKeyToCOSE.ts';
-import { COSEALG } from '../../helpers/cose.ts';
 import { unwrapEC2Signature } from '../../helpers/iso/isoCrypto/unwrapEC2Signature.ts';
 import { verifyEC2 } from '../../helpers/iso/isoCrypto/verifyEC2.ts';
+import * as isoCBOR from '../../helpers/iso/isoCBOR.ts';
+import { COSEKEYS, COSEPublicKeyEC2 } from '../../helpers/cose.ts';
+
+/**
+ * Takes COSE-encoded public key and converts it to PKCS key
+ */
+function convertCOSEtoPKCS(cosePublicKey: Buffer) {
+  const struct = isoCBOR.decodeFirst<COSEPublicKeyEC2>(cosePublicKey);
+
+  const tag = Buffer.from([0x04]);
+  const x = struct.get(COSEKEYS.x);
+  const y = struct.get(COSEKEYS.y);
+
+  if (!x) {
+    throw new Error('COSE public key was missing x');
+  }
+  if (!y) {
+    throw new Error('COSE public key was missing y');
+  }
+  return Buffer.concat([tag, x, y]);
+}
 
 /**
  * Verify an attestation response with fmt 'fido-u2f'
@@ -26,9 +45,9 @@ export async function verifyAttestationFIDOU2F(
 
   const signatureBase = Buffer.concat([
     reservedByte,
-    Buffer.from(rpIdHash),
-    Buffer.from(clientDataHash),
-    Buffer.from(credentialID),
+    rpIdHash,
+    clientDataHash,
+    credentialID,
     publicKey,
   ]);
 
@@ -64,6 +83,5 @@ export async function verifyAttestationFIDOU2F(
     cosePublicKey,
     signature: unwrappedSignature,
     data: signatureBase,
-    shaHashOverride: COSEALG.ES256,
   });
 }

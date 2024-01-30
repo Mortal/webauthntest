@@ -1,4 +1,4 @@
-import { cborx } from '../../deps.ts';
+import * as cborx from 'cbor-x';
 
 /**
  * This encoder should keep CBOR data the same length when data is re-encoded
@@ -22,10 +22,8 @@ const encoder = new cborx.Encoder({
  * @param asObject (optional) Whether to convert any CBOR Maps into JavaScript Objects. Defaults to
  * `false`
  */
-export function decodeFirst<Type>(input: Uint8Array): Type {
-  // Make a copy so we don't mutate the original
-  const _input = new Uint8Array(input);
-  const decoded = encoder.decodeMultiple(_input) as undefined | Type[];
+export function decodeFirst<Type>(input: Buffer): Type {
+  const decoded = encoder.decodeMultiple(input) as undefined | Type[];
 
   if (decoded === undefined) {
     throw new Error('CBOR input data was empty');

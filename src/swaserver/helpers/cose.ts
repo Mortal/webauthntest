@@ -62,10 +62,6 @@ export enum COSEKTY {
   RSA = 3,
 }
 
-export function isCOSEKty(kty: number | undefined): kty is COSEKTY {
-  return Object.values(COSEKTY).indexOf(kty as COSEKTY) >= 0;
-}
-
 /**
  * COSE Curves
  *
@@ -77,10 +73,6 @@ export enum COSECRV {
   P521 = 3,
   ED25519 = 6,
   SECP256K1 = 8,
-}
-
-export function isCOSECrv(crv: number | undefined): crv is COSECRV {
-  return Object.values(COSECRV).indexOf(crv as COSECRV) >= 0;
 }
 
 /**
@@ -101,8 +93,4 @@ export enum COSEALG {
   RS384 = -258,
   RS512 = -259,
   RS1 = -65535,
-}
-
-export function isCOSEAlg(alg: number | undefined): alg is COSEALG {
-  return Object.values(COSEALG).indexOf(alg as COSEALG) >= 0;
 }

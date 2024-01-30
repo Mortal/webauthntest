@@ -1,11 +1,14 @@
+import { AsnParser } from '@peculiar/asn1-schema';
 import {
-  AsnParser,
-  Certificate,
   ECParameters,
   id_ecPublicKey,
   id_secp256r1,
   id_secp384r1,
-} from '../deps.ts';
+} from '@peculiar/asn1-ecc';
+
+import {
+  Certificate,
+} from '@peculiar/asn1-x509';
 import {
   COSECRV,
   COSEKEYS,

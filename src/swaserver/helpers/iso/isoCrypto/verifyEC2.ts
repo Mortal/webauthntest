@@ -1,8 +1,6 @@
 import { webcrypto } from 'crypto';
 
-import { COSEALG, COSECRV, COSEKEYS, COSEPublicKeyEC2 } from '../../cose.ts';
-import { mapCoseAlgToWebCryptoAlg } from './mapCoseAlgToWebCryptoAlg.ts';
-import { SubtleCryptoCrv } from './structs.ts';
+import { COSECRV, COSEKEYS, COSEPublicKeyEC2 } from '../../cose.ts';
 import { b64urlencode } from '../../../../shared.ts';
 
 /**
@@ -12,9 +10,8 @@ export async function verifyEC2(opts: {
   cosePublicKey: COSEPublicKeyEC2;
   signature: Buffer;
   data: Buffer;
-  shaHashOverride?: COSEALG;
 }): Promise<boolean> {
-  const { cosePublicKey, signature, data, shaHashOverride } = opts;
+  const { cosePublicKey, signature, data } = opts;
 
   // Import the public key
   const alg = cosePublicKey.get(COSEKEYS.alg);
@@ -38,20 +35,13 @@ export async function verifyEC2(opts: {
     throw new Error('Public key was missing y (EC2)');
   }
 
-  let _crv: SubtleCryptoCrv;
-  if (crv === COSECRV.P256) {
-    _crv = 'P-256';
-  } else if (crv === COSECRV.P384) {
-    _crv = 'P-384';
-  } else if (crv === COSECRV.P521) {
-    _crv = 'P-521';
-  } else {
+  if (crv !== COSECRV.P256) {
     throw new Error(`Unexpected COSE crv value of ${crv} (EC2)`);
   }
 
   const keyData: JsonWebKey = {
     kty: 'EC',
-    crv: _crv,
+    crv: 'P-256',
     x: b64urlencode(Buffer.from(x).toString("base64")),
     y: b64urlencode(Buffer.from(y).toString("base64")),
     ext: false,
@@ -65,22 +55,16 @@ export async function verifyEC2(opts: {
      * hard-code this.
      */
     name: 'ECDSA',
-    namedCurve: _crv,
+    namedCurve: 'P-256',
   };
 
   const key = await webcrypto.subtle.importKey('jwk', keyData, keyAlgorithm, false, [
     'verify',
   ]);
 
-  // Determine which SHA algorithm to use for signature verification
-  let subtleAlg = mapCoseAlgToWebCryptoAlg(alg);
-  if (shaHashOverride) {
-    subtleAlg = mapCoseAlgToWebCryptoAlg(shaHashOverride);
-  }
-
   const verifyAlgorithm: EcdsaParams = {
     name: 'ECDSA',
-    hash: { name: subtleAlg },
+    hash: { name: 'SHA-256' },
   };
 
   return webcrypto.subtle.verify(verifyAlgorithm, key, signature, data);

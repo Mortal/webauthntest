@@ -1,4 +1,4 @@
-import { isoCBOR } from './iso/index.ts';
+import * as isoCBOR from './iso/isoCBOR.ts';
 
 /**
  * Convert an AttestationObject buffer to a proper object
@@ -6,7 +6,7 @@ import { isoCBOR } from './iso/index.ts';
  * @param base64AttestationObject Attestation Object buffer
  */
 export function decodeAttestationObject(
-  attestationObject: Uint8Array,
+  attestationObject: Buffer,
 ): AttestationObject {
   return (
     isoCBOR.decodeFirst<AttestationObject>(attestationObject)
@@ -25,7 +25,7 @@ export type AttestationFormat =
 export type AttestationObject = {
   get(key: 'fmt'): AttestationFormat;
   get(key: 'attStmt'): AttestationStatement;
-  get(key: 'authData'): Uint8Array;
+  get(key: 'authData'): Buffer;
 };
 
 /**
@@ -33,13 +33,13 @@ export type AttestationObject = {
  * possible values within it.
  */
 export type AttestationStatement = {
-  get(key: 'sig'): Uint8Array | undefined;
-  get(key: 'x5c'): Uint8Array[] | undefined;
-  get(key: 'response'): Uint8Array | undefined;
+  get(key: 'sig'): Buffer | undefined;
+  get(key: 'x5c'): Buffer[] | undefined;
+  get(key: 'response'): Buffer | undefined;
   get(key: 'alg'): number | undefined;
   get(key: 'ver'): string | undefined;
-  get(key: 'certInfo'): Uint8Array | undefined;
-  get(key: 'pubArea'): Uint8Array | undefined;
+  get(key: 'certInfo'): Buffer | undefined;
+  get(key: 'pubArea'): Buffer | undefined;
   // `Map` properties
   readonly size: number;
 };
