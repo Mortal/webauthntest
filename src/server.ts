@@ -68,11 +68,11 @@ const main = () => {
 	const key = fs.readFileSync('key.pem', 'utf8');
 	const cert = fs.readFileSync('cert.pem', 'utf8');
 
-	const webserver = https.createServer({key, cert}, httpApp);
+	const webserver = https.createServer({ key, cert }, httpApp);
 	const port = 4433;
 	webserver.listen(port, "localhost", () => {
 		console.log(`Listening on https://localhost:${port}`);
-        });
+	});
 };
 
 const routeRp = () => {
@@ -82,14 +82,14 @@ const routeRp = () => {
 	// const origins = [`https://${hostname}:4433`, `https://${hostname}:5173`];
 	// const hostnameHash = crypto.createHash('sha256').update(hostname, 'utf8').digest();
 
-	const users: {[userId: string]: User} = fs.statSync("users.json", {throwIfNoEntry: false}) != null ? JSON.parse(fs.readFileSync("users.json", "utf8")) : {};
+	const users: { [userId: string]: User } = fs.statSync("users.json", { throwIfNoEntry: false }) != null ? JSON.parse(fs.readFileSync("users.json", "utf8")) : {};
 
 	const saveUsers = () => {
-		console.log({users});
+		console.log({ users });
 		fs.writeFileSync("users.json", JSON.stringify(users), "utf8");
 	};
 
-	const registerChallenges: {[userId: string]: string} = {};
+	const registerChallenges: { [userId: string]: string } = {};
 
 	router.route("/register-challenge").post(async (_req, res) => {
 		const i = Object.keys(users).length;
@@ -152,7 +152,7 @@ const routeRp = () => {
 				credProps: true,
 			},
 		};
-	
+
 		registerChallenges[userId] = challenge;
 		saveUsers();
 		// const response: types.RegisterChallengeResponse<string> = {
@@ -181,18 +181,18 @@ const routeRp = () => {
 		// 	// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
 		// 	excludeCredentials: [],
 		// };
-		console.log({response});
+		console.log({ response });
 		res.json(response);
 	});
 
 	router.route("/register-response").post(express.json(), async (req, res) => {
-		const {response: attResponse, userId: userIdB64} = req.body as {response: VerifyRegistrationResponseOpts["response"], userId: string};
+		const { response: attResponse, userId: userIdB64 } = req.body as { response: VerifyRegistrationResponseOpts["response"], userId: string };
 		console.log(attResponse);
 		// const userId = Buffer.from(b64urldecode(attResponse.id), "base64");
 		// const userIdB64 = b64urlencode(userId.toString("base64"));
 		const expectedChallenge = registerChallenges[userIdB64];
 		if (expectedChallenge == null) {
-			res.json({"error": "Unknown or missing userId"});
+			res.json({ "error": "Unknown or missing userId" });
 			return;
 		}
 		delete registerChallenges[userIdB64];
@@ -205,7 +205,7 @@ const routeRp = () => {
 			supportedAlgorithmIDs: [-7]
 		};
 		const verification = await verifyRegistrationResponse(opts);
-															   
+
 		const { verified: verifyResult, registrationInfo } = verification;
 
 		// const {authData, fmt, attStmt} = await cborParse(Buffer.from(attResponse.attestationObject, "base64"));
@@ -370,7 +370,7 @@ const routeRp = () => {
 		// );
 		if (!verifyResult) {
 			console.log("Verify failed");
-			res.json({"error": "Failed to verify that sig is a valid signature over the binary concatenation of authData and hash."});
+			res.json({ "error": "Failed to verify that sig is a valid signature over the binary concatenation of authData and hash." });
 			return;
 		}
 		if (!registrationInfo) {
@@ -389,17 +389,17 @@ const routeRp = () => {
 			transports: attResponse.response.transports || []
 		};
 		saveUsers();
-		res.json({userId: userIdB64});
+		res.json({ userId: userIdB64 });
 	});
 
-	const authChallenges: {[challenge: string]: string} = {};
+	const authChallenges: { [challenge: string]: string } = {};
 
 	router.route("/auth-challenge").post(express.json(), async (req, res) => {
 		console.log(req.body);
 		const userId = req.body.userId;
 		const user = users[userId];
 		if (user == null) {
-			res.json({"error": "Unknown or missing userId"});
+			res.json({ "error": "Unknown or missing userId" });
 			return;
 		}
 		// const credentialId: string = b64urlencode(Buffer.from(user.credentialID).toString("base64"));
@@ -439,21 +439,21 @@ const routeRp = () => {
 
 	router.route("/auth-response").post(express.json(), async (req, res) => {
 		console.log(req.body);
-		const {userId, challenge, response: body} = req.body as {userId: string, challenge: string, response: AuthenticationResponseJSON};
+		const { userId, challenge, response: body } = req.body as { userId: string, challenge: string, response: AuthenticationResponseJSON };
 		console.log(body);
 		if (authChallenges[challenge] !== userId) {
-			console.log({body, expected: authChallenges[challenge], challenge, authChallenges});
-			res.json({"error": "Unknown challenge"});
+			console.log({ body, expected: authChallenges[challenge], challenge, authChallenges });
+			res.json({ "error": "Unknown challenge" });
 			return;
 		}
 		const user = users[userId];
 		if (user == null) {
-			res.json({"error": "Unknown user"});
+			res.json({ "error": "Unknown user" });
 			return;
 		}
 		delete authChallenges[challenge];
 		if (user.credentialID !== body.id) {
-			res.json({"error": "Wrong credential id"});
+			res.json({ "error": "Wrong credential id" });
 			return;
 		}
 		const thisDevice = {
@@ -513,13 +513,13 @@ const routeRp = () => {
 		// res.json({bar:true});
 
 		if (!verified) {
-			res.json({error: "Not verified"});
+			res.json({ error: "Not verified" });
 			return;
 		}
 		if (!authenticationInfo) {
 			throw new Error("verified, but no authenticationInfo");
 		}
-		res.json({success: true});
+		res.json({ success: true });
 	});
 	return router;
 };
@@ -528,24 +528,24 @@ const routeCredentials = () => {
 	const router = express.Router();
 
 	router.route("/create")
-	.post(express.json(), async (req, res) => {
-		const body: types.CredentialCreationOptions<string> = req.body;
-		const {publicKey} = body;
-		const result: types.CredentialCreationResult<string> = {
-			response: {
-				id: publicKey.user.id,
-				attestationObject: "some cbor object...",
-				clientDataJSON: b64urlencode(Buffer.from(JSON.stringify({
-					origin: "https://localhost:4433",
-					type: "webauthn.create",
-					challenge: publicKey.challenge,
-					hashAlgorithm: "SHA-256",
-				})).toString("base64")),
-				type: "foo",
-			},
-		};
-		res.json(result);
-	});
+		.post(express.json(), async (req, res) => {
+			const body: types.CredentialCreationOptions<string> = req.body;
+			const { publicKey } = body;
+			const result: types.CredentialCreationResult<string> = {
+				response: {
+					id: publicKey.user.id,
+					attestationObject: "some cbor object...",
+					clientDataJSON: b64urlencode(Buffer.from(JSON.stringify({
+						origin: "https://localhost:4433",
+						type: "webauthn.create",
+						challenge: publicKey.challenge,
+						hashAlgorithm: "SHA-256",
+					})).toString("base64")),
+					type: "foo",
+				},
+			};
+			res.json(result);
+		});
 
 	return router;
 };
