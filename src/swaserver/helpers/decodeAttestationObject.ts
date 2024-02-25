@@ -1,4 +1,4 @@
-import * as isoCBOR from './iso/isoCBOR.ts';
+import * as isoCBOR from './isoCBOR.ts';
 
 /**
  * Convert an AttestationObject buffer to a proper object

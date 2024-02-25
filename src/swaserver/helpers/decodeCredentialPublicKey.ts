@@ -1,5 +1,5 @@
 import { COSEKEYS, COSEPublicKey, COSEPublicKeyEC2, isCOSEPublicKeyEC2 } from './cose.ts';
-import * as isoCBOR from './iso/isoCBOR.ts';
+import * as isoCBOR from './isoCBOR.ts';
 
 export function decodeCredentialPublicKey(
   publicKey: Buffer,

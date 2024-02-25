@@ -13,7 +13,7 @@ import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
 import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
 import { COSEKEYS } from '../helpers/cose.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
-import * as isoCBOR from '../helpers/iso/isoCBOR.ts';
+import * as isoCBOR from '../helpers/isoCBOR.ts';
 import { COSEPublicKey } from '../helpers/cose.ts';
 
 import { supportedCOSEAlgorithmIdentifiers } from './generateRegistrationOptions.ts';
