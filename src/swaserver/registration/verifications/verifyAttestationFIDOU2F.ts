@@ -1,7 +1,7 @@
 import type { AttestationFormatVerifierOpts } from '../verifyRegistrationResponse.ts';
 
 import { convertX509PublicKeyToCOSE } from '../../helpers/convertX509PublicKeyToCOSE.ts';
-import { unwrapEC2Signature } from '../../helpers/iso/isoCrypto/unwrapEC2Signature.ts';
+import { unwrapEC2Signature } from '../../helpers/unwrapEC2Signature.ts';
 import { verifyEC2 } from '../../helpers/verifyEC2.ts';
 import * as isoCBOR from '../../helpers/iso/isoCBOR.ts';
 import { COSEKEYS, COSEPublicKeyEC2 } from '../../helpers/cose.ts';

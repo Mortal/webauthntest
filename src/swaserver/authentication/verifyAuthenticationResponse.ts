@@ -8,7 +8,7 @@ import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
 import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
 import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
 import { verifyEC2 } from '../helpers/verifyEC2.ts';
-import { unwrapEC2Signature } from '../helpers/iso/isoCrypto/unwrapEC2Signature.ts';
+import { unwrapEC2Signature } from '../helpers/unwrapEC2Signature.ts';
 import { b64urldecode } from '../../shared.ts';
 
 export type VerifyAuthenticationResponseOpts = {
