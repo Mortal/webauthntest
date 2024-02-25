@@ -439,10 +439,10 @@ const routeRp = () => {
 
 	router.route("/auth-response").post(express.json(), async (req, res) => {
 		console.log(req.body);
-		const { userId, challenge, response: body } = req.body as { userId: string, challenge: string, response: AuthenticationResponseJSON };
-		console.log(body);
+		const { userId, challenge, response } = req.body as { userId: string, challenge: string, response: AuthenticationResponseJSON };
+		console.log(response);
 		if (authChallenges[challenge] !== userId) {
-			console.log({ body, expected: authChallenges[challenge], challenge, authChallenges });
+			console.log({ response, expected: authChallenges[challenge], challenge, authChallenges });
 			res.json({ "error": "Unknown challenge" });
 			return;
 		}
@@ -452,7 +452,7 @@ const routeRp = () => {
 			return;
 		}
 		delete authChallenges[challenge];
-		if (user.credentialID !== body.id) {
+		if (user.credentialID !== response.id) {
 			res.json({ "error": "Wrong credential id" });
 			return;
 		}
@@ -463,54 +463,14 @@ const routeRp = () => {
 			transports: user.transports || [],
 		};
 		const opts: VerifyAuthenticationResponseOpts = {
-			response: body,
+			response,
 			expectedChallenge: challenge,
-			expectedOrigin: "https://localhost:5173",
-			expectedRPID: "localhost",
+			expectedOrigin: ["https://localhost:5173", "https://localhost:4433"],
+			expectedRPID: ["localhost"],
 			authenticator: thisDevice,
 		};
 		const verification = await verifyAuthenticationResponse(opts);
 		const { verified, authenticationInfo } = verification;
-
-		// const authData = Buffer.from(body.authenticatorData, "base64");
-		// const rpIdHash = authData.slice(0, 32);
-		// if (!bufferEqual(hostnameHash, rpIdHash)) {
-		// 	res.json({"error": "wrong rpIdHash"});
-		// 	return;
-		// }
-		// const flagsByte = authData[32];
-		// const flags = {UP: flagsByte & 1, RFU1: flagsByte & 2, UV: flagsByte & 4, RFU2: flagsByte & 0x38, AT: flagsByte & 0x40, ED: flagsByte & 0x80};
-		// if (!flags.UP) {
-		// 	res.json({"error": "UP not set"});
-		// 	return;
-		// }
-		// const signCount = authData.readUInt32BE(33);
-
-		// const cData = Buffer.from(body.clientDataJSON, "base64");
-		// const C = JSON.parse(cData.toString("utf8"));
-		// if (!origins.includes(C.origin) || C.type !== "webauthn.get" || C.challenge !== body.challenge || C.hashAlgorithm !== "SHA-256") {
-		// 	res.json({"error": "Unexpected origin/type/challenge/hashAlgorithm", expected: {origins, type: "webauthn.get", challenge: body.challenge, hashAlgorithm: "SHA-256"}, got: C});
-		// 	return;
-		// }
-		// const cDataHash = crypto.createHash('sha256').update(cData).digest();
-
-		// // Let hash be the result of computing a hash over the cData using SHA-256.
-		// // Using credentialPublicKey, verify that sig is a valid signature over the binary concatenation of authData and hash.
-
-		// const importedKey = await subtle.importKey("jwk", {...user.credentialPublicKey, alg: undefined}, {name: "ECDSA", namedCurve: "P-256"}, true, ["verify"]);
-		// console.log({importedKey});
-		// console.log({"body.signature": body.signature})
-		// const verifyResult = await subtle.verify(
-		// 	{
-		// 		name: "ECDSA",
-		// 		hash: "SHA-256",
-		// 	},
-		// 	importedKey,
-		// 	Buffer.from(body.signature),
-		// 	Buffer.concat([Buffer.from(b64urldecode(body.authenticatorData), "base64"), cDataHash])
-		// );
-		// console.log({flags, signCount, C, verifyResult});
-		// res.json({bar:true});
 
 		if (!verified) {
 			res.json({ error: "Not verified" });
