@@ -12,8 +12,7 @@ import express from 'express';
 import { b64urlencode, b64urldecode } from './shared.ts';
 import * as types from './types.ts';
 
-import { AuthenticationResponseJSON } from './swatypes/index.ts';
-import { GenerateAuthenticationOptionsOpts, generateAuthenticationOptions } from './swaserver/authentication/generateAuthenticationOptions.ts';
+import { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from './swatypes/index.ts';
 import { VerifyAuthenticationResponseOpts, verifyAuthenticationResponse } from './swaserver/authentication/verifyAuthenticationResponse.ts';
 import { VerifyRegistrationResponseOpts, verifyRegistrationResponse } from './swaserver/registration/verifyRegistrationResponse.ts';
 
@@ -405,23 +404,21 @@ const routeRp = () => {
 		}
 		// const credentialId: string = b64urlencode(Buffer.from(user.credentialID).toString("base64"));
 		const challenge = b64urlencode(crypto.randomBytes(32).toString("base64"));
-        const opts: GenerateAuthenticationOptionsOpts = {
-            timeout: 60000,
-            allowCredentials: [user].map(authenticator => ({
-                id: Buffer.from(b64urldecode(authenticator.credentialID), "base64"),
-                type: 'public-key',
-                transports: authenticator.transports,
-            })),
+		const response: PublicKeyCredentialRequestOptionsJSON = {
 			challenge,
-            // userVerification: 'discouraged',
-            rpID: "localhost",
-            // extensions: {
-            //     credProps: true,
-            //     hmacCreateSecret: false
-            // }
-        };
-
-        const response = await generateAuthenticationOptions(opts);
+			allowCredentials: [user].map(authenticator => ({
+				id: authenticator.credentialID,
+				type: 'public-key',
+				transports: authenticator.transports,
+			})),
+			timeout: 60000,
+			userVerification: "discouraged",
+			// extensions: {
+			//     credProps: true,
+			//     hmacCreateSecret: false
+			// }
+			rpId: "localhost",
+		};
 
 		authChallenges[challenge] = userId;
 		// const response: types.AuthChallengeResponse = {
