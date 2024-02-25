@@ -1,4 +1,4 @@
-import { b64urldecode } from "../../shared.ts";
+import { b64urldecode } from "../shared.ts";
 
 /**
  * Decode an authenticator's base64url-encoded clientDataJSON to JSON

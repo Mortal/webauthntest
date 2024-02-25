@@ -3,13 +3,13 @@ import crypto from 'crypto';
 import type {
   AuthenticationResponseJSON,
   AuthenticatorDevice,
-} from '../../swatypes/index.ts';
-import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
-import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
-import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
-import { verifyEC2 } from '../helpers/verifyEC2.ts';
-import { unwrapEC2Signature } from '../helpers/unwrapEC2Signature.ts';
-import { b64urldecode } from '../../shared.ts';
+} from '../swatypes/index.ts';
+import { decodeClientDataJSON } from './decodeClientDataJSON.ts';
+import { decodeCredentialPublicKey } from './decodeCredentialPublicKey.ts';
+import { matchExpectedRPID } from './matchExpectedRPID.ts';
+import { verifyEC2 } from './verifyEC2.ts';
+import { unwrapEC2Signature } from './unwrapEC2Signature.ts';
+import { b64urldecode } from '../shared.ts';
 
 export type VerifyAuthenticationResponseOpts = {
   response: AuthenticationResponseJSON;

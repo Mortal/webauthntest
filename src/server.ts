@@ -13,8 +13,8 @@ import { b64urlencode, b64urldecode } from './shared.ts';
 import * as types from './types.ts';
 
 import { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from './swatypes/index.ts';
-import { VerifyAuthenticationResponseOpts, verifyAuthenticationResponse } from './swaserver/authentication/verifyAuthenticationResponse.ts';
-import { VerifyRegistrationResponseOpts, verifyRegistrationResponse } from './swaserver/registration/verifyRegistrationResponse.ts';
+import { VerifyAuthenticationResponseOpts, verifyAuthenticationResponse } from './swaserver/verifyAuthenticationResponse.ts';
+import { VerifyRegistrationResponseOpts, verifyRegistrationResponse } from './swaserver/verifyRegistrationResponse.ts';
 
 // const subtle = crypto.subtle;
 

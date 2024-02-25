@@ -3,22 +3,22 @@ import crypto from 'crypto';
 import type {
   COSEAlgorithmIdentifier,
   RegistrationResponseJSON,
-} from '../../swatypes/index.ts';
+} from '../swatypes/index.ts';
 import {
   AttestationFormat,
   AttestationStatement,
   decodeAttestationObject,
-} from '../helpers/decodeAttestationObject.ts';
-import { decodeClientDataJSON } from '../helpers/decodeClientDataJSON.ts';
-import { decodeCredentialPublicKey } from '../helpers/decodeCredentialPublicKey.ts';
-import { COSEKEYS, COSEPublicKeyEC2 } from '../helpers/cose.ts';
-import { matchExpectedRPID } from '../helpers/matchExpectedRPID.ts';
-import * as isoCBOR from '../helpers/isoCBOR.ts';
-import { COSEPublicKey } from '../helpers/cose.ts';
-import { convertX509PublicKeyToCOSE } from '../helpers/convertX509PublicKeyToCOSE.ts';
-import { unwrapEC2Signature } from '../helpers/unwrapEC2Signature.ts';
-import { verifyEC2 } from '../helpers/verifyEC2.ts';
-import { b64urldecode } from '../../shared.ts';
+} from './decodeAttestationObject.ts';
+import { decodeClientDataJSON } from './decodeClientDataJSON.ts';
+import { decodeCredentialPublicKey } from './decodeCredentialPublicKey.ts';
+import { COSEKEYS, COSEPublicKeyEC2 } from './cose.ts';
+import { matchExpectedRPID } from './matchExpectedRPID.ts';
+import * as isoCBOR from './isoCBOR.ts';
+import { COSEPublicKey } from './cose.ts';
+import { convertX509PublicKeyToCOSE } from './convertX509PublicKeyToCOSE.ts';
+import { unwrapEC2Signature } from './unwrapEC2Signature.ts';
+import { verifyEC2 } from './verifyEC2.ts';
+import { b64urldecode } from '../shared.ts';
 
 export type VerifyRegistrationResponseOpts = {
   response: RegistrationResponseJSON;
