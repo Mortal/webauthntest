@@ -17,7 +17,7 @@ import * as isoCBOR from '../helpers/isoCBOR.ts';
 import { COSEPublicKey } from '../helpers/cose.ts';
 
 import { supportedCOSEAlgorithmIdentifiers } from './generateRegistrationOptions.ts';
-import { verifyAttestationFIDOU2F } from './verifications/verifyAttestationFIDOU2F.ts';
+import { verifyAttestationFIDOU2F } from './verifyAttestationFIDOU2F.ts';
 import { b64urldecode } from '../../shared.ts';
 
 export type VerifyRegistrationResponseOpts = {
