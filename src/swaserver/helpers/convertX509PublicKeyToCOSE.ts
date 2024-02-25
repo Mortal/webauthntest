@@ -14,8 +14,8 @@ import {
   COSEKEYS,
   COSEKTY,
   COSEPublicKeyEC2,
+  mapX509SignatureAlgToCOSEAlg,
 } from './cose.ts';
-import { mapX509SignatureAlgToCOSEAlg } from './mapX509SignatureAlgToCOSEAlg.ts';
 
 export function convertX509PublicKeyToCOSE(
   x509Certificate: Uint8Array,
