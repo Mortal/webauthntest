@@ -1,7 +1,7 @@
 import { webcrypto } from 'crypto';
 
-import { COSECRV, COSEKEYS, COSEPublicKeyEC2 } from '../../cose.ts';
-import { b64urlencode } from '../../../../shared.ts';
+import { COSECRV, COSEKEYS, COSEPublicKeyEC2 } from './cose.ts';
+import { b64urlencode } from '../../shared.ts';
 
 /**
  * Verify a signature using an EC2 public key
