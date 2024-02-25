@@ -100,14 +100,6 @@ const routeRp = () => {
 		const userName = `user${i}@example.com`;
 		const timeout = 60000;
 		const attestationType = 'direct';
-		// The excludeCredentials is something that can be
-		// ignored while you get something working, but which
-		// you’ll have to circle back and read the spec on
-		// before deploying anything real. It allows you to
-		// exclude tokens that the user has already created a
-		// key on when adding new keys.
-		// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
-		// const excludeCredentials = [];
 		const supportedAlgorithmIDs = [-7];
 		// const extensions = undefined; 
 		// const extensions = {
@@ -143,10 +135,6 @@ const routeRp = () => {
 			pubKeyCredParams,
 			timeout,
 			attestation: attestationType,
-			// excludeCredentials: excludeCredentials.map((cred) => ({
-			// 	...cred,
-			// 	id: isoBase64URL.fromBuffer(cred.id),
-			// })),
 			authenticatorSelection,
 			extensions: {
 				credProps: true,
@@ -172,14 +160,6 @@ const routeRp = () => {
 		// 	attestation: "direct",
 		// 	timeout: 60000,
 		// 	challenge,
-		// 	// The excludeCredentials is something that can be
-		// 	// ignored while you get something working, but which
-		// 	// you’ll have to circle back and read the spec on
-		// 	// before deploying anything real. It allows you to
-		// 	// exclude tokens that the user has already created a
-		// 	// key on when adding new keys.
-		// 	// https://w3c.github.io/webauthn/#dom-publickeycredentialcreationoptions-excludecredentials
-		// 	excludeCredentials: [],
 		// };
 		console.log({ response });
 		res.json(response);
